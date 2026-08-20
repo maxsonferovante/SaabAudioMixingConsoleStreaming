@@ -23,7 +23,10 @@ impl Default for MacAudioCapture {
 
 impl MacAudioCapture {
     pub fn new(device_name: Option<String>) -> Self {
-        Self { running: Arc::new(AtomicBool::new(false)), device_name }
+        Self {
+            running: Arc::new(AtomicBool::new(false)),
+            device_name,
+        }
     }
 
     /// Resolves the optimal virtual audio device or hardware input matching the active output
@@ -61,7 +64,9 @@ impl MacAudioCapture {
                 let out_lower = out_name.to_lowercase();
                 if out_lower.contains("blackhole") {
                     if let Some(dev) = input_devices.iter().find(|d| {
-                        d.name().map(|n| n.to_lowercase().contains(&out_lower)).unwrap_or(false)
+                        d.name()
+                            .map(|n| n.to_lowercase().contains(&out_lower))
+                            .unwrap_or(false)
                     }) {
                         return Ok(dev.clone());
                     }
@@ -71,22 +76,27 @@ impl MacAudioCapture {
 
         // Priority 3: BlackHole 16ch (Project Standard for 16-channel DAWs & Surround)
         if let Some(dev) = input_devices.iter().find(|d| {
-            d.name().map(|n| n.to_lowercase().contains("blackhole 16ch")).unwrap_or(false)
+            d.name()
+                .map(|n| n.to_lowercase().contains("blackhole 16ch"))
+                .unwrap_or(false)
         }) {
             return Ok(dev.clone());
         }
 
         // Priority 4: BlackHole 2ch (Universal Standard for Stereo Media)
-        if let Some(dev) = input_devices
-            .iter()
-            .find(|d| d.name().map(|n| n.to_lowercase().contains("blackhole 2ch")).unwrap_or(false))
-        {
+        if let Some(dev) = input_devices.iter().find(|d| {
+            d.name()
+                .map(|n| n.to_lowercase().contains("blackhole 2ch"))
+                .unwrap_or(false)
+        }) {
             return Ok(dev.clone());
         }
 
         // Priority 5: BlackHole 64ch
         if let Some(dev) = input_devices.iter().find(|d| {
-            d.name().map(|n| n.to_lowercase().contains("blackhole 64ch")).unwrap_or(false)
+            d.name()
+                .map(|n| n.to_lowercase().contains("blackhole 64ch"))
+                .unwrap_or(false)
         }) {
             return Ok(dev.clone());
         }
@@ -120,10 +130,10 @@ impl MacAudioCapture {
             .ok_or_else(|| CoreError::CaptureError("No audio input device found on macOS".into()))
     }
 
-    /// Builds and starts a CPAL input stream on a specific device
+    /// Builds and starts a CPAL input stream on a specific device with dedicated cancellation token
     fn build_and_start_stream(
         device: &cpal::Device,
-        running_flag: Arc<AtomicBool>,
+        stream_running_flag: Arc<AtomicBool>,
         callback_arc: SharedAudioCallback,
     ) -> Result<cpal::Stream, CoreError> {
         let dev_name = device.name().unwrap_or_else(|_| "Unknown Device".into());
@@ -152,7 +162,7 @@ impl MacAudioCapture {
             .build_input_stream(
                 &config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    if !running_flag.load(Ordering::Relaxed) {
+                    if !stream_running_flag.load(Ordering::Relaxed) {
                         return;
                     }
 
@@ -268,38 +278,38 @@ pub fn downmix_frame_to_stereo(frame: &[f32]) -> (f32, f32) {
             (out_l, out_r)
         }
         _ => {
-            // 16-channel or generic multi-channel:
+            // Multi-channel (e.g. 16-channel BlackHole / DAW buses)
+            // Stereo pairs are mapped as: (Ch 0, Ch 1), (Ch 2, Ch 3), (Ch 4, Ch 5), ..., (Ch 2k, Ch 2k+1)
             let mut l = frame[0];
             let mut r = frame.get(1).copied().unwrap_or(0.0);
 
-            // Fold in center (Ch 2) if active
-            if let Some(&c) = frame.get(2) {
-                if c.abs() > 0.0001 {
-                    l += c * FRAC_1_SQRT_2;
-                    r += c * FRAC_1_SQRT_2;
-                }
-            }
+            let main_silent =
+                frame[0].abs() <= 0.0001 && frame.get(1).copied().unwrap_or(0.0).abs() <= 0.0001;
 
-            // Sum additional active stereo pairs (Ch 4-5, 6-7, 8-9, ..., 14-15)
-            let mut i = 4;
+            let mut i = 2;
+            let mut secondary_active = false;
+
             while i < frame.len() {
                 let pair_l = frame[i];
-                let pair_r = if i + 1 < frame.len() { frame[i + 1] } else { pair_l };
-                if pair_l.abs() > 0.0001 || pair_r.abs() > 0.0001 {
-                    l += pair_l * FRAC_1_SQRT_2;
-                    r += pair_r * FRAC_1_SQRT_2;
-                }
-                i += 2;
-            }
+                let pair_r = if i + 1 < frame.len() {
+                    frame[i + 1]
+                } else {
+                    pair_l
+                };
 
-            // If main bus (0 & 1) is completely silent but secondary bus (2 & 3) has signal (e.g. secondary stereo routing)
-            if frame[0].abs() <= 0.00001 && frame.get(1).copied().unwrap_or(0.0).abs() <= 0.00001 {
-                if let (Some(&ch2), Some(&ch3)) = (frame.get(2), frame.get(3)) {
-                    if ch2.abs() > 0.0001 || ch3.abs() > 0.0001 {
-                        l = ch2;
-                        r = ch3;
+                if pair_l.abs() > 0.0001 || pair_r.abs() > 0.0001 {
+                    if main_silent && !secondary_active {
+                        // If main bus is silent, route the primary secondary stereo pair at unity gain
+                        l = pair_l;
+                        r = pair_r;
+                        secondary_active = true;
+                    } else {
+                        // Blend additional pairs with acoustic power scaling
+                        l += pair_l * FRAC_1_SQRT_2;
+                        r += pair_r * FRAC_1_SQRT_2;
                     }
                 }
+                i += 2;
             }
 
             let out_l = if l.abs() > 1.0 { l.tanh() } else { l };
@@ -318,14 +328,17 @@ impl AudioCapturePort for MacAudioCapture {
         self.running.store(true, Ordering::SeqCst);
 
         let running_thread = Arc::clone(&self.running);
-        let target_override =
-            self.device_name.clone().or_else(|| std::env::var("AUDIO_DEVICE").ok());
+        let target_override = self
+            .device_name
+            .clone()
+            .or_else(|| std::env::var("AUDIO_DEVICE").ok());
 
         std::thread::spawn(move || {
             info!("CoreAudio HAL Auto-Follower supervisor active (monitoring macOS Sound Output)");
             let host = cpal::default_host();
             let mut active_device_name = String::new();
             let mut active_stream: Option<cpal::Stream> = None;
+            let mut active_stream_flag: Option<Arc<AtomicBool>> = None;
 
             while running_thread.load(Ordering::Relaxed) {
                 let target_res = Self::resolve_active_device(&host, target_override.as_deref());
@@ -341,16 +354,33 @@ impl AudioCapturePort for MacAudioCapture {
                                     active_device_name, dev_name
                                 );
                             }
-                            active_stream = None; // Cleanly drop existing stream
+
+                            // 1. Invalidate previous stream callback immediately
+                            if let Some(flag) = active_stream_flag.take() {
+                                flag.store(false, Ordering::SeqCst);
+                            }
+
+                            // 2. Pause and drop old stream
+                            if let Some(stream) = active_stream.take() {
+                                let _ = stream.pause();
+                                drop(stream);
+                            }
+
+                            // 3. Allow CoreAudio HAL 50ms to flush buffers cleanly
+                            std::thread::sleep(std::time::Duration::from_millis(50));
+
+                            // 4. Create new dedicated stream running flag
+                            let new_stream_flag = Arc::new(AtomicBool::new(true));
 
                             match Self::build_and_start_stream(
                                 &device,
-                                Arc::clone(&running_thread),
+                                Arc::clone(&new_stream_flag),
                                 Arc::clone(&callback_arc),
                             ) {
                                 Ok(stream) => {
                                     active_device_name = dev_name.clone();
                                     active_stream = Some(stream);
+                                    active_stream_flag = Some(new_stream_flag);
                                     info!(
                                         "CoreAudio HAL capture running on '{}' (bit-exact)",
                                         dev_name
@@ -378,7 +408,13 @@ impl AudioCapturePort for MacAudioCapture {
                 std::thread::sleep(std::time::Duration::from_millis(250));
             }
 
-            drop(active_stream);
+            if let Some(flag) = active_stream_flag.take() {
+                flag.store(false, Ordering::SeqCst);
+            }
+            if let Some(stream) = active_stream.take() {
+                let _ = stream.pause();
+                drop(stream);
+            }
             info!("CoreAudio HAL capture supervisor terminated");
         });
 
