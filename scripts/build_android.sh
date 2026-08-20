@@ -44,7 +44,7 @@ fi
 
 # 4. Build Client with Release Profile
 echo "[INFO] Compiling client crate for ${TARGET_ARCH} (Android 12+)..."
-cargo ndk -t arm64-v8a -p "${MIN_SDK_VERSION}" -- build --package client --release
+cargo ndk -t arm64-v8a -P "${MIN_SDK_VERSION}" -- build --package client --release
 
 echo "[INFO] Build completed successfully."
 echo "[INFO] Binary output: target/${TARGET_ARCH}/release/client"

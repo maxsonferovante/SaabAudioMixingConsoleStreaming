@@ -21,6 +21,7 @@ anyhow = { workspace = true }
 byteorder = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+[target.'cfg(not(target_os = "android"))'.dependencies]
 iced = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]

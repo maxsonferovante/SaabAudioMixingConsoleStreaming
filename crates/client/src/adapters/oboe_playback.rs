@@ -7,14 +7,14 @@ use tracing::info;
 
 #[cfg(target_os = "android")]
 use oboe::{
-    AudioOutputCallback, AudioOutputStream, AudioStream, AudioStreamAsync, AudioStreamBuilder,
-    ChannelCount, DataCallbackResult, PerformanceMode, SharingMode,
+    AudioOutputCallback, AudioOutputStreamSafe, AudioStreamAsync, AudioStreamBuilder, Output,
+    PerformanceMode, SharingMode, Stereo,
 };
 
 pub struct OboeAudioPlayback {
     running: Arc<AtomicBool>,
     #[cfg(target_os = "android")]
-    _stream: AudioStreamAsync<AudioOutputCallback, f32>,
+    _stream: AudioStreamAsync<Output, OboeCallback>,
 }
 
 #[cfg(not(target_os = "android"))]
@@ -30,22 +30,22 @@ impl OboeAudioPlayback {
 }
 
 #[cfg(target_os = "android")]
-struct OboeCallback {
+pub struct OboeCallback {
     consumer: HeapCons<f32>,
     running: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "android")]
 impl AudioOutputCallback for OboeCallback {
-    type FrameType = (f32, f32);
+    type FrameType = (f32, Stereo);
 
     fn on_audio_ready(
         &mut self,
         _audio_stream: &mut dyn AudioOutputStreamSafe,
-        frames: &mut [Self::FrameType],
-    ) -> DataCallbackResult {
+        frames: &mut [(f32, f32)],
+    ) -> oboe::DataCallbackResult {
         if !self.running.load(Ordering::Relaxed) {
-            return DataCallbackResult::Stop;
+            return oboe::DataCallbackResult::Stop;
         }
 
         for frame in frames.iter_mut() {
@@ -54,7 +54,7 @@ impl AudioOutputCallback for OboeCallback {
             *frame = (left, right);
         }
 
-        DataCallbackResult::Continue
+        oboe::DataCallbackResult::Continue
     }
 }
 
@@ -65,7 +65,8 @@ impl OboeAudioPlayback {
         let callback = OboeCallback { consumer, running: Arc::clone(&running) };
 
         let stream = AudioStreamBuilder::default()
-            .set_channel_count(ChannelCount::Stereo)
+            .set_format::<f32>()
+            .set_channel_count::<Stereo>()
             .set_sample_rate(48000)
             .set_performance_mode(PerformanceMode::LowLatency)
             .set_sharing_mode(SharingMode::Exclusive)
