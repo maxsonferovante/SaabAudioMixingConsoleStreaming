@@ -18,7 +18,7 @@ async fn main() -> Result<()> {
     let subscriber = FmtSubscriber::builder().with_max_level(Level::INFO).finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting AudioMixingConsole Streaming Server (macOS)...");
+    info!("Starting SaabAudioMixingConsole Streaming Server (macOS)...");
 
     let target_ip = std::env::args()
         .nth(1)

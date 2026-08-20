@@ -1,12 +1,12 @@
-# AudioMixingConsole Streaming
+# SaabAudioMixingConsoleStreaming
 
-Low-latency digital audio mixing console and streaming system in Rust. Transmits uncompressed PCM audio from macOS to Android 12+ devices over UDP, routing output to external sound systems via 3.5mm P2/auxiliary interfaces, with bidirectional WebSocket control and a dedicated studio touch console.
+Low-latency digital audio mixing console and streaming system in Rust. Inspired by the precision cockpit ergonomics and aeronautical engineering of the iconic **Saab 900 Turbo**, this project transmits uncompressed PCM audio from macOS to Android 12+ devices over UDP and USB, routing output to external sound systems via 3.5mm P2/auxiliary interfaces, with bidirectional WebSocket control and a dedicated studio touch console.
 
 ---
 
 ## Overview
 
-AudioMixingConsole Streaming is designed for real-time audio routing between a macOS workstation and an Android receiver device. It eliminates the need for virtual driver workarounds by interfacing directly with native system audio frameworks (`ScreenCaptureKit`), applying digital signal processing (DSP) in domain space, and streaming bit-exact audio over a local network.
+SaabAudioMixingConsoleStreaming is designed for real-time, zero-lag audio routing between a macOS workstation and an Android receiver device. It eliminates the need for virtual driver workarounds by interfacing directly with native Apple system audio frameworks (`ScreenCaptureKit`), applying avionics-grade digital signal processing (DSP) in domain space, and streaming bit-exact audio over local networks and direct USB connections.
 
 ### Architecture Highlights
 

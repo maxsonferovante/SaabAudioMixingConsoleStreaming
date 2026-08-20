@@ -21,9 +21,7 @@ impl Default for UdpAudioReceiver {
 
 impl UdpAudioReceiver {
     pub fn new() -> Self {
-        Self {
-            running: Arc::new(AtomicBool::new(false)),
-        }
+        Self { running: Arc::new(AtomicBool::new(false)) }
     }
 
     /// Starts background UDP and TCP audio receivers feeding the lock-free ring buffer
@@ -132,7 +130,8 @@ impl UdpAudioReceiver {
                     match listener.accept() {
                         Ok((mut stream, peer_addr)) => {
                             info!("TCP Audio Streamer connected from {}", peer_addr);
-                            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(100)));
+                            let _ = stream
+                                .set_read_timeout(Some(std::time::Duration::from_millis(100)));
                             let _ = stream.set_nodelay(true);
 
                             while running_tcp.load(Ordering::Relaxed) {
@@ -156,7 +155,9 @@ impl UdpAudioReceiver {
                                             payload_buf.resize(payload_bytes, 0);
                                         }
 
-                                        if let Err(e) = stream.read_exact(&mut payload_buf[..payload_bytes]) {
+                                        if let Err(e) =
+                                            stream.read_exact(&mut payload_buf[..payload_bytes])
+                                        {
                                             warn!("TCP payload read error: {:?}", e);
                                             break;
                                         }

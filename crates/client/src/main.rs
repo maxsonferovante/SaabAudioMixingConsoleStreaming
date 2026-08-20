@@ -21,7 +21,7 @@ fn main() -> Result<()> {
     let subscriber = FmtSubscriber::builder().with_max_level(Level::INFO).finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting AudioMixingConsole Studio Client (Desktop)...");
+    info!("Starting SaabAudioMixingConsole Studio Client (Desktop)...");
 
     let udp_bind_addr: SocketAddr = "0.0.0.0:48480".parse()?;
     let ws_url = "ws://127.0.0.1:9001".to_string();
@@ -59,7 +59,7 @@ async fn main() -> Result<()> {
     let subscriber = FmtSubscriber::builder().with_max_level(Level::INFO).finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting AudioMixingConsole Android Client Engine (Oboe AAudio P2 output)...");
+    info!("Starting SaabAudioMixingConsole Android Client Engine (Oboe AAudio P2 output)...");
 
     let udp_bind_addr: SocketAddr = "0.0.0.0:48480".parse()?;
 

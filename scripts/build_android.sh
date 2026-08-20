@@ -7,7 +7,7 @@ set -euo pipefail
 TARGET_ARCH="aarch64-linux-android"
 MIN_SDK_VERSION="31" # Android 12
 
-echo "=== AudioMixingConsole Android Build & Deploy ==="
+echo "=== SaabAudioMixingConsole Android Build & Deploy ==="
 
 # 1. Check Cargo NDK
 if ! command -v cargo-ndk &> /dev/null; then

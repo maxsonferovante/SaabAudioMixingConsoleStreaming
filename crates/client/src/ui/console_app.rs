@@ -93,8 +93,8 @@ impl Application for ConsoleApp {
 
     fn title(&self) -> String {
         format!(
-            "Audio Mixing Console - [{}] - {:.1} dB",
-            if self.is_connected { "CONNECTED" } else { "OFFLINE" },
+            "Saab Audio Console - [{}] - {:.1} dB",
+            if self.is_connected { "ONLINE" } else { "STANDBY" },
             self.volume_db
         )
     }
@@ -300,8 +300,10 @@ impl Application for ConsoleApp {
             row![mute_btn, dim_btn, reset_btn].spacing(12).align_items(Alignment::Center);
 
         let content = column![
+            text("SAAB COCKPIT AUDIO CONSOLE").size(11).style(iced::theme::Text::Color(TEXT_MUTED)),
+            vertical_space().height(Length::Fixed(8.0)),
             header,
-            vertical_space().height(Length::Fixed(20.0)),
+            vertical_space().height(Length::Fixed(18.0)),
             volume_text,
             vertical_space().height(Length::Fixed(15.0)),
             vu_meters,

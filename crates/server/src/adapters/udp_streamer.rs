@@ -20,15 +20,16 @@ impl UdpAudioStreamer {
         let socket = UdpSocket::bind(bind_addr)?;
         socket.set_nonblocking(true)?;
 
-        let tcp_stream = match TcpStream::connect_timeout(&target_addr, std::time::Duration::from_millis(200)) {
-            Ok(stream) => {
-                let _ = stream.set_nodelay(true);
-                let _ = stream.set_nonblocking(true);
-                info!("Connected direct TCP audio stream to {}", target_addr);
-                Some(stream)
-            }
-            Err(_) => None,
-        };
+        let tcp_stream =
+            match TcpStream::connect_timeout(&target_addr, std::time::Duration::from_millis(200)) {
+                Ok(stream) => {
+                    let _ = stream.set_nodelay(true);
+                    let _ = stream.set_nonblocking(true);
+                    info!("Connected direct TCP audio stream to {}", target_addr);
+                    Some(stream)
+                }
+                Err(_) => None,
+            };
 
         Ok(Self {
             socket,
@@ -86,37 +87,49 @@ impl AudioStreamerPort for UdpAudioStreamer {
             .lock()
             .map_err(|_| CoreError::StreamingError("Mutex poison".into()))?;
 
-        // 1. Send via UDP
-        let _ = self.socket.send_to(&buf_guard[..total_len], target);
+        let mut sent_via_tcp = false;
 
-        // 2. Send via TCP if connected (for USB / ADB Reverse / reliable transport)
+        // 1. Send via TCP if connected (for zero-latency USB / ADB Forward wire streaming)
         if let Ok(mut tcp_guard) = self.tcp_stream.lock() {
-            if tcp_guard.is_none() && (sequence_number % 50 == 0) {
-                // Periodically try connecting TCP in background
-                if let Ok(stream) = TcpStream::connect_timeout(&target, std::time::Duration::from_millis(50)) {
+            if tcp_guard.is_none() && (sequence_number % 100 == 0) {
+                // Periodically check if TCP endpoint is available
+                if let Ok(stream) =
+                    TcpStream::connect_timeout(&target, std::time::Duration::from_millis(50))
+                {
                     let _ = stream.set_nodelay(true);
                     let _ = stream.set_nonblocking(true);
-                    info!("Established TCP audio link with {}", target);
+                    info!("Established direct TCP audio link with {}", target);
                     *tcp_guard = Some(stream);
                 }
             }
 
             if let Some(ref mut stream) = *tcp_guard {
-                if let Err(e) = stream.write_all(&buf_guard[..total_len]) {
-                    if e.kind() != std::io::ErrorKind::WouldBlock {
-                        warn!("TCP audio stream disconnected: {:?}", e);
-                        *tcp_guard = None;
+                match stream.write_all(&buf_guard[..total_len]) {
+                    Ok(_) => {
+                        sent_via_tcp = true;
+                    }
+                    Err(e) => {
+                        if e.kind() != std::io::ErrorKind::WouldBlock {
+                            warn!("TCP audio stream disconnected: {:?}", e);
+                            *tcp_guard = None;
+                        }
                     }
                 }
             }
         }
 
+        // 2. Fallback to UDP if TCP is not connected
+        if !sent_via_tcp {
+            let _ = self.socket.send_to(&buf_guard[..total_len], target);
+        }
+
         if sequence_number == 1 || sequence_number % 500 == 0 {
             info!(
-                "Audio Streamer: dispatched packet #{} ({} samples, {} bytes) -> {}",
+                "Audio Streamer: dispatched packet #{} ({} samples, {} bytes) via {} -> {}",
                 sequence_number,
                 buffer.frame_count(),
                 total_len,
+                if sent_via_tcp { "TCP/USB" } else { "UDP" },
                 target
             );
         }
