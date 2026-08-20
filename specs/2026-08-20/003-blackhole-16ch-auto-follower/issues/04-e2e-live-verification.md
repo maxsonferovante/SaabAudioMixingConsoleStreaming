@@ -4,9 +4,9 @@
 
 **Blocked by:** 03 — 16-Channel Diagnostic Telemetry & Active Channel Mapping
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Start server and initiate stream to Android device.
-- [ ] Switch macOS sound output between BlackHole 2ch and BlackHole 16ch.
-- [ ] Confirm log output reports automatic device migration in <100ms.
-- [ ] Confirm audio continues playing clearly on Android / Edifier speaker without silence or distortion.
+- [x] Start server and initiate stream to Android device.
+- [x] Switch macOS sound output between BlackHole 2ch and BlackHole 16ch.
+- [x] Confirm log output reports automatic device migration in <100ms.
+- [x] Confirm audio continues playing clearly on Android / Edifier speaker without silence or distortion.
