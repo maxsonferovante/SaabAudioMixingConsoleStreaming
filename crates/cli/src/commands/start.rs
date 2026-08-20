@@ -25,19 +25,20 @@ pub fn run_start() -> Result<()> {
     if server_pid_file.exists() {
         if let Ok(pid_str) = fs::read_to_string(&server_pid_file) {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
-                println!(
-                    "[Process Supervisor] Detected active server PID {}. Restarting service...",
-                    pid
-                );
-                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
+                let _ = Command::new("kill")
+                    .args(["-TERM", &pid.to_string()])
+                    .stderr(Stdio::null())
+                    .status();
                 thread::sleep(Duration::from_millis(300));
             }
         }
         let _ = fs::remove_file(&server_pid_file);
     }
     // Also cleanup any orphan server processes
-    let _ = Command::new("pkill").args(["-f", "target/release/server"]).status();
-    let _ = Command::new("pkill").args(["-f", "target/debug/server"]).status();
+    let _ =
+        Command::new("pkill").args(["-f", "target/release/server"]).stderr(Stdio::null()).status();
+    let _ =
+        Command::new("pkill").args(["-f", "target/debug/server"]).stderr(Stdio::null()).status();
 
     // 2. Locate and spawn macOS Server Daemon
     let server_bin = find_server_binary()?;
@@ -46,7 +47,9 @@ pub fn run_start() -> Result<()> {
         .with_context(|| format!("Failed to open server log file at {:?}", server_log_file))?;
     let log_err = log_out.try_clone().context("Failed to clone log file handle")?;
 
-    let target_addr = format!("{}:{}", config.network.android_ip, config.network.audio_port);
+    let ip_only =
+        config.network.android_ip.split(':').next().unwrap_or(&config.network.android_ip).trim();
+    let target_addr = format!("{}:{}", ip_only, config.network.audio_port);
     println!("[macOS Server] Launching background audio capture engine...");
     println!("  - Target Endpoint : {}", target_addr);
     println!("  - Audio Driver    : {}", config.audio.device_name);
