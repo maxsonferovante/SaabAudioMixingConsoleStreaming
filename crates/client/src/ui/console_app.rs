@@ -267,8 +267,8 @@ impl Application for ConsoleApp {
         .align_items(Alignment::Center);
 
         // Master Fader Slider (-60dB to +6dB)
-        let fader = slider(-60.0..=6.0, self.volume_db, Message::VolumeChanged)
-            .step(0.5)
+        let fader = slider(-60.0_f32..=6.0_f32, self.volume_db, Message::VolumeChanged)
+            .step(0.5_f32)
             .width(Length::Fixed(280.0));
 
         // Control Buttons (MUTE, DIM, RESET 0dB)
