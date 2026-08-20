@@ -20,9 +20,16 @@ async fn main() -> Result<()> {
 
     info!("Starting AudioMixingConsole Streaming Server (macOS)...");
 
+    let target_ip = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("TARGET_UDP_ADDR").ok())
+        .unwrap_or_else(|| "127.0.0.1:48480".to_string());
+
     let udp_bind_addr: SocketAddr = "0.0.0.0:0".parse()?;
-    let udp_target_addr: SocketAddr = "127.0.0.1:48480".parse()?;
+    let udp_target_addr: SocketAddr = target_ip.parse()?;
     let ws_bind_addr: SocketAddr = "0.0.0.0:9001".parse()?;
+
+    info!("Streaming UDP audio to target: {}", udp_target_addr);
 
     let streamer = Arc::new(UdpAudioStreamer::new(udp_bind_addr, udp_target_addr)?);
     let (telemetry_broadcaster, _rx) = WebSocketTelemetryBroadcaster::new();
