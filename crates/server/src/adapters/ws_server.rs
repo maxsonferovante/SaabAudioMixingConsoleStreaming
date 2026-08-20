@@ -110,7 +110,7 @@ where
             // Send telemetry to client
             telemetry = telemetry_rx.recv() => {
                 if let Ok(json) = telemetry {
-                    if let Err(e) = ws_sender.send(Message::Text(json)).await {
+                    if let Err(e) = ws_sender.send(Message::Text(json.into())).await {
                         warn!("WS send error: {:?}", e);
                         break;
                     }

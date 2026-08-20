@@ -25,7 +25,7 @@ impl WebSocketClient {
                 tokio::select! {
                     Some(cmd) = command_rx.recv() => {
                         if let Ok(json) = serde_json::to_string(&cmd) {
-                            if let Err(e) = ws_sender.send(Message::Text(json)).await {
+                            if let Err(e) = ws_sender.send(Message::Text(json.into())).await {
                                 warn!("Failed to send command over WS: {:?}", e);
                                 break;
                             }

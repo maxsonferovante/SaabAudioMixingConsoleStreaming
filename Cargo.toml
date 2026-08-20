@@ -20,8 +20,8 @@ protocol = { path = "crates/protocol" }
 audio_core = { path = "crates/core" }
 
 # Async & Networking
-tokio = { version = "1.36", features = ["full"] }
-tokio-tungstenite = "0.21"
+tokio = { version = "1.43", features = ["full"] }
+tokio-tungstenite = "0.26"
 futures-util = "0.3"
 
 # Serialization & Binary Formats
@@ -36,7 +36,7 @@ ringbuf = "0.4"
 crossbeam-channel = "0.5"
 
 # Error Handling & Logging
-thiserror = "1.0"
+thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
