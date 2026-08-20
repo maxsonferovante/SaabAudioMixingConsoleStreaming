@@ -1,15 +1,15 @@
 class Saab < Formula
-  desc "Ultra-low-latency distributed audio streaming & mixing console CLI for macOS and Android"
+  desc "Ultra-low-latency distributed audio mixing console CLI for macOS and Android"
   homepage "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming"
   version "0.4.0"
   license "MIT"
 
   if Hardware::CPU.arm?
     url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v0.4.0/saab-v0.4.0-macos-arm64.tar.gz"
-    # sha256 checksum will be injected dynamically on release
+    sha256 "e7d2331c9af44d3c6220e3cffa7a7437bbd55a4ffc0ee175b12dd9d7ce5d865d"
   else
     url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v0.4.0/saab-v0.4.0-macos-x86_64.tar.gz"
-    # sha256 checksum will be injected dynamically on release
+    sha256 "d59e0f8368ea905973a6d279e5401744ad3fd71b8e253651f3984fc73213f68f"
   end
 
   depends_on "blackhole-16ch"
