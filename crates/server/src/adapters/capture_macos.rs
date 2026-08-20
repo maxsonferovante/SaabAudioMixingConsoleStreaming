@@ -66,9 +66,11 @@ impl AudioCapturePort for MacAudioCapture {
                 d.name()
                     .map(|n| {
                         let lower = n.to_lowercase();
-                            || lower.contains("blackhole")
+                        lower.contains("blackhole")
                             || lower.contains("loopback")
                             || lower.contains("soundflower")
+                            || lower.contains("aggregate")
+                            || lower.contains("multi-output")
                     })
                     .unwrap_or(false)
             });
