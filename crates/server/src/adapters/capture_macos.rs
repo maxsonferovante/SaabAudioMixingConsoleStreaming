@@ -10,17 +10,18 @@ use tracing::{error, info};
 pub struct MacAudioCapture {
     stream: Option<cpal::Stream>,
     running: Arc<AtomicBool>,
+    device_name: Option<String>,
 }
 
 impl Default for MacAudioCapture {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
 impl MacAudioCapture {
-    pub fn new() -> Self {
-        Self { stream: None, running: Arc::new(AtomicBool::new(false)) }
+    pub fn new(device_name: Option<String>) -> Self {
+        Self { stream: None, running: Arc::new(AtomicBool::new(false)), device_name }
     }
 }
 
@@ -30,12 +31,56 @@ impl AudioCapturePort for MacAudioCapture {
         mut callback: Box<dyn FnMut(AudioBuffer) + Send + 'static>,
     ) -> Result<(), CoreError> {
         let host = cpal::default_host();
-        let device = host.default_input_device().ok_or_else(|| {
-            CoreError::CaptureError("No default input audio device found on macOS".into())
+
+        // Enumerate all input devices
+        let input_devices: Vec<_> = host
+            .input_devices()
+            .map_err(|e| {
+                CoreError::CaptureError(format!("Failed to enumerate input devices: {:?}", e))
+            })?
+            .collect();
+
+        info!("Available macOS Audio Input Devices:");
+        for (i, dev) in input_devices.iter().enumerate() {
+            let name = dev.name().unwrap_or_else(|_| "Unknown".into());
+            info!("  [{}] {}", i, name);
+        }
+
+        // Selection priority:
+        // 1. Explicit device name passed in CLI / config
+        // 2. Environment variable AUDIO_DEVICE
+        // 3. Virtual loopback device (Perssua, BlackHole, Loopback, Aggregate)
+        // 4. Default input device
+        let target_device_name =
+            self.device_name.clone().or_else(|| std::env::var("AUDIO_DEVICE").ok());
+
+        let device = if let Some(ref target_name) = target_device_name {
+            input_devices.into_iter().find(|d| {
+                d.name()
+                    .map(|n| n.to_lowercase().contains(&target_name.to_lowercase()))
+                    .unwrap_or(false)
+            })
+        } else {
+            // Check for known virtual loopback devices
+            let loopback_dev = input_devices.into_iter().find(|d| {
+                d.name()
+                    .map(|n| {
+                        let lower = n.to_lowercase();
+                            || lower.contains("blackhole")
+                            || lower.contains("loopback")
+                            || lower.contains("soundflower")
+                    })
+                    .unwrap_or(false)
+            });
+
+            loopback_dev.or_else(|| host.default_input_device())
+        }
+        .ok_or_else(|| {
+            CoreError::CaptureError("No suitable audio input device found on macOS".into())
         })?;
 
         let device_name = device.name().unwrap_or_else(|_| "Unknown Device".into());
-        info!("Initializing audio capture on device: {}", device_name);
+        info!("Selected audio capture device: {}", device_name);
 
         let default_config = device.default_input_config().map_err(|e| {
             CoreError::CaptureError(format!("Failed to get default input config: {:?}", e))
@@ -97,7 +142,7 @@ impl AudioCapturePort for MacAudioCapture {
         })?;
 
         self.stream = Some(stream);
-        info!("macOS Audio Capture running at {}Hz", sample_rate);
+        info!("macOS Audio Capture running at {}Hz ({} channels)", sample_rate, input_channels);
 
         Ok(())
     }
@@ -118,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_mac_audio_capture_initialization() {
-        let capture = MacAudioCapture::new();
+        let capture = MacAudioCapture::new(None);
         assert!(!capture.running.load(Ordering::Relaxed));
     }
 }

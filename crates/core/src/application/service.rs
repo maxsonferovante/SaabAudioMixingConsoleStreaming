@@ -32,7 +32,7 @@ impl MixerService {
         match self.mute_state {
             MuteState::Muted => 0.0,
             MuteState::Dimmed => {
-                (self.volume.as_db() - 20.0).clamp(DecibelVolume::MIN_DB, DecibelVolume::MAX_DB)
+                DecibelVolume::new(self.volume.as_db() - 20.0).to_linear_gain().as_f32()
             }
             MuteState::Unmuted => self.volume.to_linear_gain().as_f32(),
         }

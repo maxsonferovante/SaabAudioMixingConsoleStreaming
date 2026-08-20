@@ -67,7 +67,7 @@ async fn main() -> Result<()> {
     });
 
     // Start macOS Audio Capture
-    let mut capture = MacAudioCapture::new();
+    let mut capture = MacAudioCapture::new(std::env::args().nth(2));
     let mixer_for_capture = Arc::clone(&mixer);
 
     let capture_result = capture.start_capture(Box::new(move |buffer: AudioBuffer| {
