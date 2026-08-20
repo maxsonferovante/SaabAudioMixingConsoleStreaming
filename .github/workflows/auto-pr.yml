@@ -24,7 +24,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BRANCH_NAME="${{ github.ref_name }}"
-          echo "Processing branch: $BRANCH_NAME targeting develop"
+          echo "Processing feature branch: $BRANCH_NAME targeting develop"
           
           EXISTING_PR=$(gh pr list --base develop --head "$BRANCH_NAME" --state open --json number -q '.[0].number')
           
@@ -32,15 +32,13 @@ jobs:
             echo "Pull Request already exists: PR #$EXISTING_PR. Skipping creation."
           else
             echo "Creating new PR: $BRANCH_NAME -> develop..."
+            PR_BODY="This Pull Request was automatically created upon detecting pushes to \`${BRANCH_NAME}\` targeting the \`develop\` branch."
             gh pr create \
               --base develop \
               --head "$BRANCH_NAME" \
               --title "feat: Merge $BRANCH_NAME into develop" \
-              --body "This Pull Request was automatically created upon detecting pushes to \`$BRANCH_NAME\` targeting the \`develop\` branch.
-
-Review and approval required by @maxsonferovante." \
-              --assignee "maxsonferovante" \
-              --reviewer "maxsonferovante" || true
+              --body "$PR_BODY" \
+              --assignee "maxsonferovante" || true
           fi
 
   create-pr-develop-to-main:
@@ -58,7 +56,6 @@ Review and approval required by @maxsonferovante." \
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Checking diff between develop and main..."
-          
           git fetch origin main
           DIFF_COUNT=$(git rev-list --count origin/main..origin/develop || echo "0")
           
@@ -73,13 +70,11 @@ Review and approval required by @maxsonferovante." \
             echo "Release PR develop -> main already exists: PR #$EXISTING_PR."
           else
             echo "Creating release PR: develop -> main..."
+            RELEASE_BODY="Release candidate ready for production deployment from \`develop\` to \`main\`."
             gh pr create \
               --base main \
               --head develop \
               --title "release: Merge develop into main" \
-              --body "Release candidate ready for production deployment.
-
-Review and approval required by @maxsonferovante." \
-              --assignee "maxsonferovante" \
-              --reviewer "maxsonferovante" || true
+              --body "$RELEASE_BODY" \
+              --assignee "maxsonferovante" || true
           fi
