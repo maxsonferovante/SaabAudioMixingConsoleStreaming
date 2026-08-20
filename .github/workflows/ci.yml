@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Build, Lint & Test
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Verify Code Formatting
+        run: cargo fmt --check
+
+      - name: Clippy Static Analysis
+        run: cargo clippy --workspace -- -D warnings
+
+      - name: Workspace Test Suite
+        run: cargo test --workspace --verbose

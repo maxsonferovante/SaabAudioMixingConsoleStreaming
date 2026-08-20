@@ -1,41 +1,13 @@
-name: Rust CI & Release
+name: Release & Distribution
 
 on:
   push:
-    branches: [ "main", "develop" ]
-  pull_request:
-    branches: [ "main", "develop" ]
+    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  test:
-    name: Build, Lint & Test
-    runs-on: macos-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Rust Toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Verify Formatting
-        run: cargo fmt --check
-
-      - name: Clippy Linter
-        run: cargo clippy --workspace -- -D warnings
-
-      - name: Cargo Build
-        run: cargo build --workspace --verbose
-
-      - name: Cargo Test
-        run: cargo test --workspace --verbose
-
   check-version:
     name: Check Version Change
     runs-on: ubuntu-latest
@@ -49,26 +21,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Check if tag exists
+      - name: Detect Version Tag
         id: check
         run: |
           VERSION=$(grep -m1 '^version = ' Cargo.toml | cut -d '"' -f2)
           TAG_NAME="v${VERSION}"
           
           if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
-            echo "Version ${VERSION} already released (tag ${TAG_NAME} exists)."
+            echo "Version ${VERSION} already released (${TAG_NAME} exists)."
             echo "needs_release=false" >> $GITHUB_OUTPUT
           else
-            echo "New version ${VERSION} detected (tag ${TAG_NAME} does not exist)."
+            echo "New version ${VERSION} detected (${TAG_NAME} does not exist)."
             echo "needs_release=true" >> $GITHUB_OUTPUT
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
             echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           fi
 
   build-android:
-    name: Build Android aarch64 Binary
-    needs: [test, check-version]
-    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
+    name: Build Android Node (aarch64)
+    needs: [check-version]
+    if: needs.check-version.outputs.needs_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -90,19 +62,19 @@ jobs:
       - name: Build Android Client Binary
         run: |
           cargo ndk -t arm64-v8a -P 31 -- build --package client --release
-          mkdir -p artifacts
-          cp target/aarch64-linux-android/release/client artifacts/client-aarch64-linux-android
+          mkdir -p dist
+          cp target/aarch64-linux-android/release/client dist/client-aarch64-linux-android
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-client-binary
-          path: artifacts/client-aarch64-linux-android
+          name: android-artifact
+          path: dist/client-aarch64-linux-android
 
   build-macos:
-    name: Build macOS Universal / ARM64 / x86_64 Binaries
-    needs: [test, check-version]
-    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
+    name: Build macOS Packages (ARM64 & x86_64)
+    needs: [check-version]
+    if: needs.check-version.outputs.needs_release == 'true'
     runs-on: macos-latest
     steps:
       - name: Checkout Repository
@@ -113,35 +85,29 @@ jobs:
         with:
           targets: aarch64-apple-darwin, x86_64-apple-darwin
 
-      - name: Build macOS Release Binaries
+      - name: Build and Package Binaries
         run: |
           VERSION="${{ needs.check-version.outputs.version }}"
           mkdir -p dist
 
-          # 1. Build ARM64 (Apple Silicon)
+          # Build ARM64
           cargo build --release --target aarch64-apple-darwin --bin saab --bin server
-          mkdir -p package-arm64
-          cp target/aarch64-apple-darwin/release/saab package-arm64/
-          cp target/aarch64-apple-darwin/release/server package-arm64/
-          tar -czvf "dist/saab-v${VERSION}-macos-arm64.tar.gz" -C package-arm64 saab server
+          tar -czvf "dist/saab-v${VERSION}-macos-arm64.tar.gz" -C target/aarch64-apple-darwin/release saab server
 
-          # 2. Build x86_64 (Intel)
+          # Build x86_64
           cargo build --release --target x86_64-apple-darwin --bin saab --bin server
-          mkdir -p package-x86_64
-          cp target/x86_64-apple-darwin/release/saab package-x86_64/
-          cp target/x86_64-apple-darwin/release/server package-x86_64/
-          tar -czvf "dist/saab-v${VERSION}-macos-x86_64.tar.gz" -C package-x86_64 saab server
+          tar -czvf "dist/saab-v${VERSION}-macos-x86_64.tar.gz" -C target/x86_64-apple-darwin/release saab server
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: macos-dist-artifacts
+          name: macos-artifacts
           path: dist/
 
-  release:
-    name: Create GitHub Release & Homebrew Formula
-    needs: [test, check-version, build-android, build-macos]
-    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
+  publish-release:
+    name: Publish Release & Homebrew Formula
+    needs: [check-version, build-android, build-macos]
+    if: needs.check-version.outputs.needs_release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -151,17 +117,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download Android Artifact
+      - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: android-client-binary
-          path: release-assets/
-
-      - name: Download macOS Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: macos-dist-artifacts
-          path: release-assets/
+          path: release-assets
+          merge-multiple: true
 
       - name: Create Git Tag & Push
         run: |
@@ -171,7 +131,7 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
 
-      - name: Compute Checksums & Generate Homebrew Formula
+      - name: Generate Formula & Checksums
         run: |
           VERSION="${{ needs.check-version.outputs.version }}"
           cd release-assets
@@ -181,8 +141,6 @@ jobs:
 
           ARM64_SHA=$(sha256sum "$ARM64_TAR" | awk '{print $1}')
           X86_64_SHA=$(sha256sum "$X86_64_TAR" | awk '{print $1}')
-          ANDROID_SHA=$(sha256sum "client-aarch64-linux-android" | awk '{print $1}')
-
           sha256sum * > checksums.txt
 
           cat << EOF > saab.rb
@@ -245,7 +203,6 @@ jobs:
           } > RELEASE_BODY.md
 
       - name: Create GitHub Release
-        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.check-version.outputs.tag_name }}
