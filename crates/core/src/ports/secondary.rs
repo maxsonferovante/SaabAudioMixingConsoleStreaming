@@ -22,7 +22,7 @@ pub trait AudioPlaybackPort: Send {
 }
 
 /// Driving/Driven Port for capturing digital audio from the OS or audio hardware
-pub trait AudioCapturePort: Send {
+pub trait AudioCapturePort {
     fn start_capture(
         &mut self,
         callback: Box<dyn FnMut(AudioBuffer) + Send + 'static>,

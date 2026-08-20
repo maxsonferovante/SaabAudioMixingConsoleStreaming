@@ -2,12 +2,15 @@ use anyhow::Result;
 use audio_core::application::MixerService;
 use audio_core::domain::{AudioBuffer, DecibelVolume};
 use audio_core::ports::primary::{AdjustVolumeUseCase, ProcessAudioUseCase, ToggleMuteUseCase};
+use audio_core::ports::secondary::AudioCapturePort;
 use protocol::ControlCommandDto;
-use server::adapters::{UdpAudioStreamer, WebSocketControlServer, WebSocketTelemetryBroadcaster};
+use server::adapters::{
+    MacAudioCapture, UdpAudioStreamer, WebSocketControlServer, WebSocketTelemetryBroadcaster,
+};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tracing::{info, Level};
+use tracing::{info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
@@ -56,26 +59,43 @@ async fn main() -> Result<()> {
             .await;
     });
 
-    info!("Server audio loop active. Streaming 48kHz stereo frames to UDP {}", udp_target_addr);
+    // Start macOS Audio Capture
+    let mut capture = MacAudioCapture::new();
+    let mixer_for_capture = Arc::clone(&mixer);
 
-    // Audio capture & streaming loop (240 samples = 5ms at 48kHz)
-    let frame_size = 240;
-    let mut interval = tokio::time::interval(Duration::from_millis(5));
-
-    loop {
-        interval.tick().await;
-
-        // In ticket 01, we generate pure sine/raw pass-through audio frames to test loopback
-        let mut samples = Vec::with_capacity(frame_size * 2);
-        for _ in 0..frame_size {
-            samples.push(0.0);
-            samples.push(0.0);
+    let capture_result = capture.start_capture(Box::new(move |buffer: AudioBuffer| {
+        if let Ok(mut m) = mixer_for_capture.lock() {
+            let _ = m.process_block(buffer);
         }
+    }));
 
-        if let Ok(buffer) = AudioBuffer::new(samples, 2, 48000) {
-            if let Ok(mut m) = mixer.lock() {
-                let _ = m.process_block(buffer);
-            }
+    match capture_result {
+        Ok(()) => {
+            info!("macOS Audio Capture stream active. Real-time audio is being captured.");
+        }
+        Err(e) => {
+            warn!("Hardware audio capture unavailable ({:?}). Running fallback generator...", e);
+            let mixer_for_fallback = Arc::clone(&mixer);
+            tokio::spawn(async move {
+                let frame_size = 240;
+                let mut interval = tokio::time::interval(Duration::from_millis(5));
+                loop {
+                    interval.tick().await;
+                    let samples = vec![0.0; frame_size * 2];
+                    if let Ok(buffer) = AudioBuffer::new(samples, 2, 48000) {
+                        if let Ok(mut m) = mixer_for_fallback.lock() {
+                            let _ = m.process_block(buffer);
+                        }
+                    }
+                }
+            });
         }
     }
+
+    info!("Server is running. Press Ctrl+C to exit.");
+    tokio::signal::ctrl_c().await?;
+    info!("Shutting down AudioMixingConsole Server.");
+    let _ = capture.stop_capture();
+
+    Ok(())
 }

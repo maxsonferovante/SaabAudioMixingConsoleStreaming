@@ -4,11 +4,11 @@ Um adaptador de captura de áudio nativo para macOS no backend (`server`) que se
 
 ## Acceptance criteria
 
-- [ ] Implementação do adaptador `ScreenCaptureKitAudioCapture` que implementa a trait `AudioCapturePort`.
-- [ ] Inicialização da captura de áudio digital global do sistema no macOS 12.3+ / 13+.
-- [ ] Conversão e alinhamento de taxa de amostragem para 48kHz estéreo float32 PCM.
-- [ ] Fallback transparente para dispositivos `cpal` locais em caso de execução fora do macOS ou permissões não concedidas.
-- [ ] Teste de inicialização e captura de amostras reais do sistema validado no backend.
+- [x] Implementação do adaptador `ScreenCaptureKitAudioCapture` que implementa a trait `AudioCapturePort`.
+- [x] Inicialização da captura de áudio digital global do sistema no macOS 12.3+ / 13+.
+- [x] Conversão e alinhamento de taxa de amostragem para 48kHz estéreo float32 PCM.
+- [x] Fallback transparente para dispositivos `cpal` locais em caso de execução fora do macOS ou permissões não concedidas.
+- [x] Teste de inicialização e captura de amostras reais do sistema validado no backend.
 
 ## Blocked by
 
