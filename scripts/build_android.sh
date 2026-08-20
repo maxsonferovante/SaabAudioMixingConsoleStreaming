@@ -52,6 +52,16 @@ echo "[INFO] Binary output: target/${TARGET_ARCH}/release/client"
 # 5. Optional ADB Push & Execution
 if command -v adb &> /dev/null; then
     DEVICES=$(adb devices | grep -v "List of devices" | grep "device$" || true)
+    if [ -z "$DEVICES" ]; then
+        echo "[INFO] No USB device attached."
+        read -p "Connect to Android device via Wi-Fi? (e.g. 192.168.15.5:5555 or IP:PORT, or Enter to skip): " WIFI_TARGET
+        if [ -n "$WIFI_TARGET" ]; then
+            echo "[INFO] Connecting to $WIFI_TARGET via Wi-Fi ADB..."
+            adb connect "$WIFI_TARGET" || true
+            DEVICES=$(adb devices | grep -v "List of devices" | grep "device$" || true)
+        fi
+    fi
+
     if [ -n "$DEVICES" ]; then
         DEVICE_IP=$(adb shell "ip -f inet addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print \$2}' | cut -d/ -f1" | tr -d '\r' || true)
         echo "[INFO] Connected Android device detected via ADB."
@@ -60,8 +70,12 @@ if command -v adb &> /dev/null; then
             echo "[INFO] Stream command: cargo run --bin server -- ${DEVICE_IP}:48480"
         fi
         read -p "Deploy binary to /data/local/tmp/client and execute? (y/N) " -n 1 -r
-        echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "[INFO] Terminating any existing client instances on target device..."
+            adb shell "pkill -9 -f /data/local/tmp/client" 2>/dev/null || true
+            adb shell "killall -9 client" 2>/dev/null || true
+            sleep 0.5
+
             LIBCXX_PATH=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" | grep "aarch64" | head -n 1 || true)
             if [ -n "$LIBCXX_PATH" ]; then
                 echo "[INFO] Transferring libc++_shared.so to device..."

@@ -130,8 +130,6 @@ impl UdpAudioReceiver {
                     match listener.accept() {
                         Ok((mut stream, peer_addr)) => {
                             info!("TCP Audio Streamer connected from {}", peer_addr);
-                            let _ = stream
-                                .set_read_timeout(Some(std::time::Duration::from_millis(100)));
                             let _ = stream.set_nodelay(true);
 
                             while running_tcp.load(Ordering::Relaxed) {
@@ -139,6 +137,7 @@ impl UdpAudioReceiver {
                                     if e.kind() == std::io::ErrorKind::WouldBlock
                                         || e.kind() == std::io::ErrorKind::TimedOut
                                     {
+                                        std::thread::sleep(std::time::Duration::from_millis(1));
                                         continue;
                                     }
                                     info!("TCP Audio Streamer disconnected: {:?}", e);
@@ -158,6 +157,14 @@ impl UdpAudioReceiver {
                                         if let Err(e) =
                                             stream.read_exact(&mut payload_buf[..payload_bytes])
                                         {
+                                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                                || e.kind() == std::io::ErrorKind::TimedOut
+                                            {
+                                                std::thread::sleep(
+                                                    std::time::Duration::from_millis(1),
+                                                );
+                                                continue;
+                                            }
                                             warn!("TCP payload read error: {:?}", e);
                                             break;
                                         }

@@ -3,23 +3,15 @@ use audio_core::error::CoreError;
 use audio_core::ports::secondary::AudioCapturePort;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::StreamConfig;
+use std::f32::consts::FRAC_1_SQRT_2;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tracing::{error, info, warn};
-
-#[cfg(target_os = "macos")]
-use screencapturekit::cm::{CMSampleBuffer, CMSampleBufferExt};
-#[cfg(target_os = "macos")]
-use screencapturekit::prelude::{
-    SCContentFilter, SCShareableContent, SCStream, SCStreamConfiguration, SCStreamOutputType,
-};
 
 type SharedAudioCallback = Arc<std::sync::Mutex<Box<dyn FnMut(AudioBuffer) + Send + 'static>>>;
 
 pub struct MacAudioCapture {
     cpal_stream: Option<cpal::Stream>,
-    #[cfg(target_os = "macos")]
-    sck_stream: Option<SCStream>,
     running: Arc<AtomicBool>,
     device_name: Option<String>,
 }
@@ -32,149 +24,14 @@ impl Default for MacAudioCapture {
 
 impl MacAudioCapture {
     pub fn new(device_name: Option<String>) -> Self {
-        Self {
-            cpal_stream: None,
-            #[cfg(target_os = "macos")]
-            sck_stream: None,
-            running: Arc::new(AtomicBool::new(false)),
-            device_name,
-        }
+        Self { cpal_stream: None, running: Arc::new(AtomicBool::new(false)), device_name }
     }
 
-    #[cfg(target_os = "macos")]
-    fn try_start_screencapturekit(
-        &mut self,
-        callback: SharedAudioCallback,
-    ) -> Result<(), CoreError> {
-        info!("Attempting Apple ScreenCaptureKit system audio capture (native, zero-driver)...");
-
-        let content = SCShareableContent::get().map_err(|e| {
-            CoreError::CaptureError(format!(
-                "SCShareableContent::get failed (check Screen/Audio Recording permissions): {:?}",
-                e
-            ))
-        })?;
-
-        let displays = content.displays();
-        let main_display = displays.first().ok_or_else(|| {
-            CoreError::CaptureError("No display found for ScreenCaptureKit".into())
-        })?;
-
-        let filter = SCContentFilter::create()
-            .with_display(main_display)
-            .with_excluding_windows(&[])
-            .build();
-
-        let config = SCStreamConfiguration::new()
-            .with_width(100)
-            .with_height(100)
-            .with_captures_audio(true)
-            .with_sample_rate(48_000)
-            .with_channel_count(2);
-
-        let mut stream = SCStream::new(&filter, &config);
-
-        let running_flag = Arc::clone(&self.running);
-        let cb_clone = Arc::clone(&callback);
-
-        stream.add_output_handler(
-            move |sample: CMSampleBuffer, of_type: SCStreamOutputType| {
-                if !running_flag.load(Ordering::Relaxed) {
-                    return;
-                }
-
-                if of_type == SCStreamOutputType::Audio {
-                    if let Some(audio_list) = sample.audio_buffer_list() {
-                        let buffers: Vec<_> = audio_list.iter().collect();
-                        if buffers.is_empty() {
-                            return;
-                        }
-
-                        let interleaved_samples: Vec<f32> = if buffers.len() == 1 {
-                            let buf = &buffers[0];
-                            let raw = buf.data();
-                            let floats: Vec<f32> = raw
-                                .chunks_exact(4)
-                                .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
-                                .collect();
-
-                            if buf.number_channels == 1 {
-                                // Mono to Stereo expansion
-                                let mut stereo = Vec::with_capacity(floats.len() * 2);
-                                for s in floats {
-                                    stereo.push(s);
-                                    stereo.push(s);
-                                }
-                                stereo
-                            } else {
-                                floats
-                            }
-                        } else {
-                            // Non-interleaved stereo
-                            let left_raw = buffers[0].data();
-                            let right_raw = buffers[1].data();
-
-                            let left_floats: Vec<f32> = left_raw
-                                .chunks_exact(4)
-                                .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
-                                .collect();
-                            let right_floats: Vec<f32> = right_raw
-                                .chunks_exact(4)
-                                .map(|c| f32::from_ne_bytes([c[0], c[1], c[2], c[3]]))
-                                .collect();
-
-                            let count = left_floats.len().min(right_floats.len());
-                            let mut stereo = Vec::with_capacity(count * 2);
-                            for i in 0..count {
-                                stereo.push(left_floats[i]);
-                                stereo.push(right_floats[i]);
-                            }
-                            stereo
-                        };
-
-                        if !interleaved_samples.is_empty() {
-                            static COUNTER: std::sync::atomic::AtomicU64 =
-                                std::sync::atomic::AtomicU64::new(0);
-                            let c = COUNTER.fetch_add(1, Ordering::Relaxed);
-                            if c == 0 || c % 500 == 0 {
-                                info!(
-                                    "ScreenCaptureKit: captured audio block #{} ({} samples)",
-                                    c,
-                                    interleaved_samples.len()
-                                );
-                            }
-
-                            if let Ok(audio_buf) = AudioBuffer::new(interleaved_samples, 2, 48000) {
-                                if let Ok(mut lock) = cb_clone.lock() {
-                                    lock(audio_buf);
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            SCStreamOutputType::Audio,
-        );
-
-        // Also attach screen handler to ensure OS compositor drives stream clock
-        stream.add_output_handler(
-            |_sample: CMSampleBuffer, _of_type: SCStreamOutputType| {},
-            SCStreamOutputType::Screen,
-        );
-
-        stream.start_capture().map_err(|e| {
-            CoreError::CaptureError(format!("SCStream::start_capture failed: {:?}", e))
-        })?;
-
-        self.sck_stream = Some(stream);
-        info!("Apple ScreenCaptureKit system audio stream active at 48000Hz stereo.");
-
-        Ok(())
-    }
-
-    fn start_cpal_fallback(&mut self, callback: SharedAudioCallback) -> Result<(), CoreError> {
-        let host = cpal::default_host();
-
+    /// Resolves the optimal virtual audio device or hardware input
+    fn resolve_device(
+        host: &cpal::Host,
+        override_name: Option<&str>,
+    ) -> Result<cpal::Device, CoreError> {
         let input_devices: Vec<_> = host
             .input_devices()
             .map_err(|e| {
@@ -182,43 +39,158 @@ impl MacAudioCapture {
             })?
             .collect();
 
-        info!("Available macOS Audio Input Devices:");
+        info!("Available macOS Audio Input Devices (CoreAudio HAL):");
         for (i, dev) in input_devices.iter().enumerate() {
             let name = dev.name().unwrap_or_else(|_| "Unknown".into());
             info!("  [{}] {}", i, name);
         }
 
-        let target_device_name =
+        // Priority 1: User override via CLI or Environment
+        if let Some(target) = override_name {
+            if let Some(dev) = input_devices.iter().find(|d| {
+                d.name().map(|n| n.to_lowercase().contains(&target.to_lowercase())).unwrap_or(false)
+            }) {
+                return Ok(dev.clone());
+            }
+            warn!("Specified audio device '{}' not found, falling back to auto-discovery", target);
+        }
+
+        // Priority 2: Match active macOS Default Output if it is a BlackHole variant
+        if let Some(default_out) = host.default_output_device() {
+            if let Ok(out_name) = default_out.name() {
+                let out_lower = out_name.to_lowercase();
+                if out_lower.contains("blackhole") {
+                    if let Some(dev) = input_devices.iter().find(|d| {
+                        d.name().map(|n| n.to_lowercase().contains(&out_lower)).unwrap_or(false)
+                    }) {
+                        info!("Auto-detected active macOS Sound Output: {}", out_name);
+                        return Ok(dev.clone());
+                    }
+                }
+            }
+        }
+
+        // Priority 3: BlackHole 2ch (Universal Standard for Spotify/YouTube/Media)
+        if let Some(dev) = input_devices
+            .iter()
+            .find(|d| d.name().map(|n| n.to_lowercase().contains("blackhole 2ch")).unwrap_or(false))
+        {
+            return Ok(dev.clone());
+        }
+
+        // Priority 4: BlackHole 16ch (16-channel DAWs & Surround)
+        if let Some(dev) = input_devices.iter().find(|d| {
+            d.name().map(|n| n.to_lowercase().contains("blackhole 16ch")).unwrap_or(false)
+        }) {
+            return Ok(dev.clone());
+        }
+
+        // Priority 5: BlackHole 64ch
+        if let Some(dev) = input_devices.iter().find(|d| {
+            d.name().map(|n| n.to_lowercase().contains("blackhole 64ch")).unwrap_or(false)
+        }) {
+            return Ok(dev.clone());
+        }
+
+        // Priority 6: Generic BlackHole, Loopback, or Multi-Output
+        if let Some(dev) = input_devices.iter().find(|d| {
+            d.name()
+                .map(|n| {
+                    let l = n.to_lowercase();
+                    l.contains("blackhole")
+                        || l.contains("loopback")
+                        || l.contains("soundflower")
+                        || l.contains("multi-output")
+                })
+                .unwrap_or(false)
+        }) {
+            return Ok(dev.clone());
+        }
+
+        // Priority 6: Default input device with explicit setup guidance
+        warn!("==========================================================================");
+        warn!("[WARNING] BlackHole 16ch virtual audio driver not detected on this system.");
+        warn!("To route and capture system audio digitally with zero latency, please install:");
+        warn!("  brew install blackhole-16ch   (Project Standard - 16-channel DAWs & surround)");
+        warn!("  brew install blackhole-2ch    (Alternative - 2-channel basic stereo)");
+        warn!("  brew install blackhole-64ch   (Alternative - 64-channel studio routing)");
+        warn!("After installing, set your macOS Output to BlackHole in System Settings -> Sound.");
+        warn!("==========================================================================");
+
+        host.default_input_device()
+            .ok_or_else(|| CoreError::CaptureError("No audio input device found on macOS".into()))
+    }
+}
+
+/// Applies ITU-R BS.775 broadcast downmixing to a multi-channel frame
+pub fn downmix_frame_to_stereo(frame: &[f32]) -> (f32, f32) {
+    match frame.len() {
+        0 => (0.0, 0.0),
+        1 => (frame[0], frame[0]),
+        2 => (frame[0], frame[1]),
+        6 => {
+            // 5.1 Surround Downmix (ITU-R BS.775)
+            // Ch 0: L, Ch 1: R, Ch 2: C, Ch 3: LFE, Ch 4: Ls, Ch 5: Rs
+            let c = frame[2] * FRAC_1_SQRT_2;
+            let l = frame[0] + c + frame[4] * FRAC_1_SQRT_2;
+            let r = frame[1] + c + frame[5] * FRAC_1_SQRT_2;
+            (l, r)
+        }
+        _ => {
+            // 16-channel or generic multi-channel:
+            let mut l = frame[0];
+            let mut r = frame.get(1).copied().unwrap_or(0.0);
+
+            // Fold in center (Ch 2) if active
+            if let Some(&c) = frame.get(2) {
+                if c.abs() > 0.0001 {
+                    l += c * FRAC_1_SQRT_2;
+                    r += c * FRAC_1_SQRT_2;
+                }
+            }
+
+            // Sum additional active stereo pairs (Ch 4-5, 6-7, 8-9, etc.)
+            let mut i = 4;
+            while i < frame.len() {
+                let pair_l = frame[i];
+                let pair_r = if i + 1 < frame.len() { frame[i + 1] } else { pair_l };
+                if pair_l.abs() > 0.0001 || pair_r.abs() > 0.0001 {
+                    l += pair_l * FRAC_1_SQRT_2;
+                    r += pair_r * FRAC_1_SQRT_2;
+                }
+                i += 2;
+            }
+
+            // If main bus (0 & 1) is completely silent but channels 2 & 3 have signal (e.g. secondary stereo routing)
+            if frame[0].abs() <= 0.00001 && frame.get(1).copied().unwrap_or(0.0).abs() <= 0.00001 {
+                if let (Some(&ch2), Some(&ch3)) = (frame.get(2), frame.get(3)) {
+                    if ch2.abs() > 0.0001 || ch3.abs() > 0.0001 {
+                        l = ch2;
+                        r = ch3;
+                    }
+                }
+            }
+
+            (l, r)
+        }
+    }
+}
+
+impl AudioCapturePort for MacAudioCapture {
+    fn start_capture(
+        &mut self,
+        callback: Box<dyn FnMut(AudioBuffer) + Send + 'static>,
+    ) -> Result<(), CoreError> {
+        let callback_arc: SharedAudioCallback = Arc::new(std::sync::Mutex::new(callback));
+        self.running.store(true, Ordering::SeqCst);
+
+        let host = cpal::default_host();
+        let target_override =
             self.device_name.clone().or_else(|| std::env::var("AUDIO_DEVICE").ok());
 
-        let device = if let Some(ref target_name) = target_device_name {
-            input_devices.into_iter().find(|d| {
-                d.name()
-                    .map(|n| n.to_lowercase().contains(&target_name.to_lowercase()))
-                    .unwrap_or(false)
-            })
-        } else {
-            let loopback_dev = input_devices.into_iter().find(|d| {
-                d.name()
-                    .map(|n| {
-                        let lower = n.to_lowercase();
-                        lower.contains("blackhole")
-                            || lower.contains("loopback")
-                            || lower.contains("soundflower")
-                            || lower.contains("aggregate")
-                            || lower.contains("multi-output")
-                    })
-                    .unwrap_or(false)
-            });
-
-            loopback_dev.or_else(|| host.default_input_device())
-        }
-        .ok_or_else(|| {
-            CoreError::CaptureError("No suitable audio input device found on macOS".into())
-        })?;
-
+        let device = Self::resolve_device(&host, target_override.as_deref())?;
         let device_name = device.name().unwrap_or_else(|_| "Unknown Device".into());
-        info!("Selected audio capture device: {}", device_name);
+        info!("CoreAudio HAL Capture active on device: {}", device_name);
 
         let default_config = device.default_input_config().map_err(|e| {
             CoreError::CaptureError(format!("Failed to get default input config: {:?}", e))
@@ -228,10 +200,18 @@ impl MacAudioCapture {
         let input_channels = config.channels as usize;
         let sample_rate = config.sample_rate.0;
 
+        info!(
+            "BlackHole Audio Capture format: {}Hz, {} input channels",
+            sample_rate, input_channels
+        );
+
         let running_flag = Arc::clone(&self.running);
-        let chunk_size = 240;
-        let mut sample_accumulator = Vec::with_capacity(chunk_size * 2);
-        let cb_clone = Arc::clone(&callback);
+        // Size chunk proportionally to sample rate (5ms chunks: 240 frames at 48kHz, 480 frames at 96kHz, 960 at 192kHz)
+        let chunk_frames = (sample_rate as usize * 5) / 1000;
+        let mut sample_accumulator = Vec::with_capacity(chunk_frames * 2);
+        let cb_clone = Arc::clone(&callback_arc);
+
+        let err_fn = |err| error!("An error occurred on the audio input stream: {:?}", err);
 
         let stream = device
             .build_input_stream(
@@ -242,24 +222,48 @@ impl MacAudioCapture {
                     }
 
                     for frame in data.chunks(input_channels) {
-                        let (left, right) = match frame.len() {
-                            0 => (0.0, 0.0),
-                            1 => (frame[0], frame[0]),
-                            _ => (frame[0], frame[1]),
-                        };
+                        let (left, right) = downmix_frame_to_stereo(frame);
 
                         sample_accumulator.push(left);
                         sample_accumulator.push(right);
 
-                        if sample_accumulator.len() >= chunk_size * 2 {
-                            if let Ok(buffer) = AudioBuffer::new(
-                                std::mem::replace(
-                                    &mut sample_accumulator,
-                                    Vec::with_capacity(chunk_size * 2),
-                                ),
-                                2,
-                                sample_rate,
-                            ) {
+                        if sample_accumulator.len() >= chunk_frames * 2 {
+                            let block_samples = std::mem::replace(
+                                &mut sample_accumulator,
+                                Vec::with_capacity(chunk_frames * 2),
+                            );
+
+                            let mut peak: f32 = 0.0;
+                            for &s in &block_samples {
+                                let abs = s.abs();
+                                if abs > peak {
+                                    peak = abs;
+                                }
+                            }
+
+                            static BLOCK_COUNTER: std::sync::atomic::AtomicU64 =
+                                std::sync::atomic::AtomicU64::new(0);
+                            let count = BLOCK_COUNTER.fetch_add(1, Ordering::Relaxed);
+                            if count == 0 || count % 500 == 0 {
+                                if peak > 0.0001 {
+                                    info!(
+                                        "BlackHole Capture: block #{} ({} samples, {}Hz, peak signal: {:.4})",
+                                        count,
+                                        block_samples.len() / 2,
+                                        sample_rate,
+                                        peak
+                                    );
+                                } else {
+                                    info!(
+                                        "BlackHole Capture: block #{} ({} samples, {}Hz, SILENCE - check macOS Output)",
+                                        count,
+                                        block_samples.len() / 2,
+                                        sample_rate
+                                    );
+                                }
+                            }
+
+                            if let Ok(buffer) = AudioBuffer::new(block_samples, 2, sample_rate) {
                                 if let Ok(mut lock) = cb_clone.lock() {
                                     lock(buffer);
                                 }
@@ -267,63 +271,26 @@ impl MacAudioCapture {
                         }
                     }
                 },
-                move |err| {
-                    error!("macOS Audio Capture stream error: {:?}", err);
-                },
+                err_fn,
                 None,
             )
             .map_err(|e| {
-                CoreError::CaptureError(format!("Failed to build input stream: {:?}", e))
+                CoreError::CaptureError(format!("Failed to build CPAL input stream: {:?}", e))
             })?;
 
         stream.play().map_err(|e| {
-            CoreError::CaptureError(format!("Failed to play capture stream: {:?}", e))
+            CoreError::CaptureError(format!("Failed to play CPAL input stream: {:?}", e))
         })?;
 
         self.cpal_stream = Some(stream);
-        info!("macOS Audio Capture running at {}Hz ({} channels)", sample_rate, input_channels);
+        info!("macOS Audio Capture running at {}Hz (bit-exact CoreAudio HAL)", sample_rate);
 
         Ok(())
-    }
-}
-
-impl AudioCapturePort for MacAudioCapture {
-    fn start_capture(
-        &mut self,
-        callback: Box<dyn FnMut(AudioBuffer) + Send + 'static>,
-    ) -> Result<(), CoreError> {
-        self.running.store(true, Ordering::SeqCst);
-        let shared_callback = Arc::new(std::sync::Mutex::new(callback));
-
-        #[cfg(target_os = "macos")]
-        {
-            // If the user did not explicitly request a specific physical input device, try native ScreenCaptureKit first
-            if self.device_name.is_none() {
-                match self.try_start_screencapturekit(Arc::clone(&shared_callback)) {
-                    Ok(()) => return Ok(()),
-                    Err(e) => {
-                        warn!("ScreenCaptureKit initialization failed ({:?}). Falling back to hardware/loopback audio...", e);
-                    }
-                }
-            }
-        }
-
-        self.start_cpal_fallback(shared_callback)
     }
 
     fn stop_capture(&mut self) -> Result<(), CoreError> {
         self.running.store(false, Ordering::SeqCst);
-
-        #[cfg(target_os = "macos")]
-        {
-            if let Some(stream) = self.sck_stream.take() {
-                let _ = stream.stop_capture();
-            }
-        }
-
-        if let Some(stream) = self.cpal_stream.take() {
-            let _ = stream.pause();
-        }
+        self.cpal_stream = None;
         info!("macOS Audio Capture stopped");
         Ok(())
     }
@@ -335,7 +302,45 @@ mod tests {
 
     #[test]
     fn test_mac_audio_capture_initialization() {
-        let capture = MacAudioCapture::new(None);
-        assert!(!capture.running.load(Ordering::Relaxed));
+        let capture = MacAudioCapture::new(Some("Test Device".into()));
+        assert!(!capture.running.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_downmix_stereo_passthrough() {
+        let frame = [0.5, -0.5];
+        let (l, r) = downmix_frame_to_stereo(&frame);
+        assert!((l - 0.5).abs() < 1e-6);
+        assert!((r - (-0.5)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_downmix_mono_duplication() {
+        let frame = [0.75];
+        let (l, r) = downmix_frame_to_stereo(&frame);
+        assert!((l - 0.75).abs() < 1e-6);
+        assert!((r - 0.75).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_downmix_5_1_surround_itur_bs775() {
+        // L=0.2, R=0.3, C=0.4, LFE=0.0, Ls=0.1, Rs=0.1
+        let frame = [0.2, 0.3, 0.4, 0.0, 0.1, 0.1];
+        let (l, r) = downmix_frame_to_stereo(&frame);
+        let expected_c = 0.4 * FRAC_1_SQRT_2;
+        let expected_l = 0.2 + expected_c + 0.1 * FRAC_1_SQRT_2;
+        let expected_r = 0.3 + expected_c + 0.1 * FRAC_1_SQRT_2;
+        assert!((l - expected_l).abs() < 1e-5);
+        assert!((r - expected_r).abs() < 1e-5);
+    }
+
+    #[test]
+    fn test_downmix_16_channel_frame() {
+        let mut frame = [0.0; 16];
+        frame[0] = 0.8;
+        frame[1] = -0.4;
+        let (l, r) = downmix_frame_to_stereo(&frame);
+        assert!((l - 0.8).abs() < 1e-6);
+        assert!((r - (-0.4)).abs() < 1e-6);
     }
 }

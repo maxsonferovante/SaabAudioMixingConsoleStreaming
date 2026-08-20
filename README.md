@@ -1,18 +1,19 @@
 # Saab Audio Mixing Console Streaming
 
-Low-latency digital audio mixing console and streaming system in Rust. Inspired by the precision cockpit ergonomics and aeronautical engineering of the iconic **Saab 900 Turbo**, this project transmits uncompressed PCM audio from macOS to Android 12+ devices over UDP and USB, routing output to external sound systems via 3.5mm P2/auxiliary interfaces, with bidirectional WebSocket control and a dedicated studio touch console.
+Low-latency digital audio mixing console and streaming system in Rust. Inspired by the precision cockpit ergonomics and aeronautical engineering of the iconic **Saab 900 Turbo**, this project transmits uncompressed high-resolution PCM audio from macOS to Android 12+ devices over UDP and USB, routing output to external sound systems via 3.5mm P2/auxiliary interfaces, with bidirectional WebSocket control and a dedicated studio touch console.
 
 ---
 
 ## Overview
 
-SaabAudioMixingConsoleStreaming is designed for real-time, zero-lag audio routing between a macOS workstation and an Android receiver device. It eliminates the need for virtual driver workarounds by interfacing directly with native Apple system audio frameworks (`ScreenCaptureKit`), applying avionics-grade digital signal processing (DSP) in domain space, and streaming bit-exact audio over local networks and direct USB connections.
+SaabAudioMixingConsoleStreaming is designed for real-time, zero-lag audio routing between a macOS workstation and an Android receiver device. It captures master system audio digitally through macOS CoreAudio HAL and the **BlackHole 16ch** virtual audio loopback driver with zero additional latency, applies avionics-grade digital signal processing (DSP) in domain space, and streams bit-exact audio over local networks and direct USB connections.
 
 ### Architecture Highlights
 
-- **Pure PCM UDP Streaming**: Bit-exact 48kHz stereo float32 audio transmission with sub-5ms network latency.
+- **Pure PCM UDP/USB Streaming**: Bit-exact high-resolution stereo float32 audio transmission (44.1kHz to 192kHz) with sub-5ms network latency.
 - **Hexagonal Architecture (Ports and Adapters)**: Strict decoupling of domain logic, communication contracts, and platform drivers.
-- **Driverless macOS System Capture**: Integration with Apple's native `ScreenCaptureKit` (`SCStream`) for driverless digital audio capture across all applications (Spotify, browsers, games, calls).
+- **Zero-Latency CoreAudio Loopback**: Integration with `BlackHole 16ch` (and 2ch/64ch variants) for clean digital loopback capture without screen recording indicators, GPU compositor overhead, or audio echoing on Mac speakers.
+- **Broadcast ITU-R BS.775 Downmixing**: Automatic weighted downmixing from 16-channel and surround (5.1/7.1) sources to clean stereo for physical P2 line outputs.
 - **Android Low-Latency Output**: Dedicated Google Oboe (AAudio) engine configured for exclusive low-latency operation targeting 3.5mm P2 and USB-C DAC outputs on Android 12+ (API 31+).
 - **DSP Engine**: Broadcast-standard logarithmic faders (-inf to +6dB) with frame-accurate 5ms linear gain ramps to eliminate transient pop and click artifacts during volume transitions.
 - **Continuous Telemetry & Metering**: 60fps RMS and True Peak metering with exponential peak hold decay, clipping detection, and round-trip time (RTT) calculation via WebSocket ping/pong messages.
@@ -26,10 +27,9 @@ The following core libraries power the streaming, audio DSP, networking, and use
 
 | Library | Role in Architecture | Repository |
 | :--- | :--- | :--- |
-| **`screencapturekit`** | Safe Rust bindings for Apple's native `ScreenCaptureKit` framework on macOS 13+. Captures bit-exact system digital audio in real-time without requiring third-party virtual audio drivers (such as BlackHole or Perssua). | [github.com/doom-fish/screencapturekit-rs](https://github.com/doom-fish/screencapturekit-rs) |
+| **`cpal`** | Cross-platform audio I/O in pure Rust. Interfaces directly with macOS CoreAudio HAL to capture zero-latency digital loopback streams from BlackHole. | [github.com/RustAudio/cpal](https://github.com/RustAudio/cpal) |
 | **`oboe` / `oboe-sys`** | Rust bindings for Google's high-performance C++ Oboe audio library on Android. Provides direct AAudio exclusive access for lowest possible hardware latency (<5ms) and hardware routing to the 3.5mm P2 audio jack. | [github.com/google/oboe](https://github.com/google/oboe) |
 | **`ringbuf`** | Lock-free Single-Producer Single-Consumer (SPSC) circular buffer. Bridges real-time, non-blocking audio capture/playback callbacks with asynchronous network tasks with zero allocation and zero lock contention. | [github.com/agerasev/ringbuf](https://github.com/agerasev/ringbuf) |
-| **`cpal`** | Cross-platform audio I/O library in pure Rust. Serves as a desktop audio playback engine and cross-platform hardware fallback for audio device enumeration and capture. | [github.com/RustAudio/cpal](https://github.com/RustAudio/cpal) |
 | **`tokio`** | Event-driven, asynchronous I/O runtime. Manages non-blocking UDP audio packet reception, high-throughput network streaming, and concurrent WebSocket servers and clients. | [github.com/tokio-rs/tokio](https://github.com/tokio-rs/tokio) |
 | **`tokio-tungstenite`** | Lightweight, high-performance asynchronous WebSocket implementation for Tokio. Handles real-time bidirectional synchronization of fader levels, mute/dim controls, and telemetry broadcasts. | [github.com/snapview/tokio-tungstenite](https://github.com/snapview/tokio-tungstenite) |
 | **`iced`** | Cross-platform GUI framework inspired by Elm. Powers the tactile studio mixing console interface with dark studio aesthetics, 20-segment responsive VU meters, and illuminated control switches. | [github.com/iced-rs/iced](https://github.com/iced-rs/iced) |
@@ -39,20 +39,33 @@ The following core libraries power the streaming, audio DSP, networking, and use
 
 ---
 
+## BlackHole Variants Guide
+
+The acronym **"ch"** stands for independent **Audio Channels**. All variants operate in macOS CoreAudio HAL with **zero additional driver latency**:
+
+| Version | Channel Count | Production Use Case | Recommended for Project? |
+| :--- | :--- | :--- | :--- |
+| **`BlackHole 16ch`** | **16 Independent Channels** | Music production in DAWs (Logic Pro, Ableton, Reaper), advanced OBS multitrack routing, distinct sub-mixes (Game, Discord, Music), and 5.1/7.1 surround audio feeds. | **PROJECT STANDARD (Recommended)** |
+| **`BlackHole 2ch`** | **2 Channels (Stereo: Left & Right)** | Standard stereo playback, Spotify, YouTube, common gaming, voice calls, and basic streaming. | Full Compatibility (Auto-Discovery) |
+| **`BlackHole 64ch` / `256ch`** | **64 / 256 Independent Channels** | Large-scale recording studios, multi-instrument orchestral tracking, and complex industrial audio arrays. | Full Compatibility (Auto-Discovery) |
+
+---
+
 ## System Architecture
 
 ```
 +-------------------------------------------------------------+
 |                         macOS Server                        |
-|  - ScreenCaptureKit Native System Audio Stream              |
+|  - BlackHole 16ch CoreAudio HAL Loopback Stream             |
+|  - ITU-R BS.775 Broadcast Downmixer (16ch/5.1 -> Stereo)    |
 |  - MixerService DSP (Volume Curves, Gain Ramp, Mute State)  |
 |  - VU Meter Processor & Telemetry Broadcaster               |
 +------------------------------+------------------------------+
                                |
             +------------------+------------------+
             |                                     |
-   [UDP Audio Stream]                     [WebSocket Control]
-   Raw PCM Float32 (48kHz)                Bidirectional Channel
+   [UDP/USB Audio Stream]                 [WebSocket Control]
+   Raw PCM Float32 (44.1k - 192kHz)       Bidirectional Channel
    28-byte Binary Header                  - Fader / Mute Commands
    Latency: <5ms                          - 60fps VU Meters / RTT
             |                                     |
@@ -78,11 +91,11 @@ The following core libraries power the streaming, audio DSP, networking, and use
 ## Workspace Layout
 
 ```
-AudioMixingConsoleStreaming/
+SaabAudioMixingConsoleStreaming/
 ├── crates/
 │   ├── protocol/        # Binary UDP packet header and WebSocket JSON DTOs
 │   ├── core/            # Domain entities, DSP value types, and Ports
-│   ├── server/          # macOS backend: ScreenCaptureKit, UDP streamer, WebSocket server
+│   ├── server/          # macOS backend: CoreAudio BlackHole capture, UDP streamer, WebSocket server
 │   └── client/          # Client frontend: Iced UI, UDP receiver, CPAL & Oboe playback
 ├── scripts/
 │   └── build_android.sh # Cargo-NDK build and ADB deployment script for Android 12+
@@ -97,7 +110,10 @@ AudioMixingConsoleStreaming/
 ### Prerequisites
 
 - **Rust**: Version 1.75 or later (`rustup default stable`)
-- **macOS**: Version 13.0 or later (for native ScreenCaptureKit system audio capture)
+- **macOS Audio Driver**: Install BlackHole 16ch via Homebrew:
+  ```bash
+  brew install blackhole-16ch
+  ```
 - **Android Target** (for Android compilation):
   - `cargo install cargo-ndk`
   - `rustup target add aarch64-linux-android`
@@ -107,14 +123,42 @@ AudioMixingConsoleStreaming/
 
 ### Running the Server (macOS)
 
-Execute the server binary on macOS, pointing to the Android device IP:
+1. Set your macOS audio output to **BlackHole 16ch** or **BlackHole 2ch** in **System Settings -> Sound -> Output**.
+2. Execute the server binary on macOS, pointing to the Android device IP:
 
 ```bash
 cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
 ```
 
-- **Audio Capture**: Automatically activates native **ScreenCaptureKit** to capture Spotify and system audio directly with zero third-party drivers.
+- **Audio Capture**: Automatically synchronizes and binds to the active macOS sound output driver (**BlackHole 2ch** or **BlackHole 16ch**).
 - **WebSocket Control Server**: Listening on `ws://0.0.0.0:9001`.
+
+---
+
+### Common Issues and Troubleshooting
+
+#### 1. Zero Audio / Complete Silence (`SILENCE - check macOS Output`)
+
+If the server logs indicate packets are being transmitted but reports silence:
+
+- **macOS Microphone / Audio Input Permission**:
+  On macOS (Sonoma, Sequoia, and later), any terminal emulator or IDE capturing CoreAudio input streams (including virtual loopback drivers like BlackHole) requires explicit **Microphone permission**. When this permission is absent, macOS CoreAudio does not throw an error; instead, it intentionally replaces all captured samples with zeros (`0.000000`) for privacy reasons.
+
+  **Resolution**:
+  1. Open **System Settings -> Privacy & Security -> Microphone** (*Ajustes do Sistema -> Privacidade e Segurança -> Microfone*).
+  2. Locate your **Terminal** (or **iTerm**, **Cursor**, **VSCode**) in the list and enable the toggle.
+  3. If already enabled, toggle it OFF and ON again to reload the CoreAudio security token.
+
+- **Browser and Application Output Binding (Chrome, Spotify)**:
+  Chromium-based browsers (Chrome, Brave, Edge) and media players maintain open audio stream handles to the previous default output device until refreshed.
+  - **YouTube / Web Browser**: Reload the tab (`Cmd + R` or `F5`) to re-bind audio context to BlackHole.
+  - **Spotify**: Pause and unpause playback, or restart the Spotify application.
+
+- **Driver Reload Without Rebooting**:
+  If BlackHole was installed via Homebrew and does not immediately appear in the CoreAudio device list, restart the CoreAudio daemon:
+  ```bash
+  sudo killall coreaudiod
+  ```
 
 ---
 
@@ -130,13 +174,64 @@ cargo run --bin client
 
 ### Compiling and Deploying to Android
 
-Connect an Android 12+ device with USB debugging enabled, then execute:
+The Android client runs on Android 12+ (`aarch64-linux-android`) using Google Oboe with AAudio Exclusive Mode routed directly to the 3.5mm P2 headphone jack.
 
-```bash
-./scripts/build_android.sh
-```
+#### Method 1: Direct USB Cable Deployment
 
-The script verifies NDK presence, compiles the client crate using `cargo-ndk` with release optimizations, pushes the binary and `libc++_shared.so` to `/data/local/tmp/`, and initiates the low-latency Oboe playback engine routed to the 3.5mm P2 jack.
+1. Connect your Android device via USB with **USB Debugging** enabled in Developer Options.
+2. Execute the build and deployment script:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+3. Run the macOS server streaming over USB port forwarding:
+   ```bash
+   cargo run --bin server -- 127.0.0.1:48480
+   ```
+
+---
+
+#### Method 2: Wi-Fi Wireless Deployment
+
+##### Option A: Enable Wi-Fi ADB via USB (Recommended & Quickest)
+1. Connect the USB cable once and initialize TCP/IP mode on port 5555:
+   ```bash
+   adb tcpip 5555
+   ```
+2. Disconnect the USB cable.
+3. Connect ADB to your Android device over Wi-Fi:
+   ```bash
+   adb connect <ANDROID_DEVICE_IP>:5555
+   ```
+4. Deploy and start the client binary wirelessly:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+5. Run the macOS server pointing to your Android device's Wi-Fi IP:
+   ```bash
+   cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+   ```
+
+##### Option B: Native Wireless Debugging (No Cable Required, Android 11+)
+1. On your Android device, navigate to **Settings -> Developer options -> Wireless debugging**.
+2. Enable Wireless debugging and select **Pair device with pairing code**.
+3. Note the IP address, pairing port, and 6-digit code displayed on your device.
+4. On your Mac, pair the device:
+   ```bash
+   adb pair <ANDROID_DEVICE_IP>:<PAIRING_PORT>
+   # Enter the 6-digit pairing code when prompted
+   ```
+5. Note the main connection port shown under "IP address & Port" on your phone, then connect:
+   ```bash
+   adb connect <ANDROID_DEVICE_IP>:<PORT>
+   ```
+6. Deploy and start the client:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+7. Start the macOS audio stream:
+   ```bash
+   cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+   ```
 
 ---
 
@@ -168,7 +263,7 @@ Each UDP datagram consists of a fixed 28-byte binary header followed by raw inte
 | `0..4` | `[u8; 4]` | `magic` | Identifier bytes (`b"AMCS"`) |
 | `4..12` | `u64` | `sequence_number` | Monotonic packet counter |
 | `12..20` | `u64` | `timestamp_us` | Microsecond timestamp for jitter tracking |
-| `20..24` | `u32` | `sample_rate` | Sampling rate in Hz (`48000`) |
+| `20..24` | `u32` | `sample_rate` | Sampling rate in Hz (`44100`..=`192000`) |
 | `24..26` | `u16` | `channels` | Channel count (`2` for Stereo) |
 | `26..27` | `u8` | `format` | Sample format identifier (`0` = Float32 LE) |
 | `27..28` | `u8` | `reserved` | Reserved for byte alignment |
