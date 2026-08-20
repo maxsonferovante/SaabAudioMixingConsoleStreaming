@@ -23,10 +23,7 @@ impl Default for MacAudioCapture {
 
 impl MacAudioCapture {
     pub fn new(device_name: Option<String>) -> Self {
-        Self {
-            running: Arc::new(AtomicBool::new(false)),
-            device_name,
-        }
+        Self { running: Arc::new(AtomicBool::new(false)), device_name }
     }
 
     /// Resolves the optimal virtual audio device or hardware input matching the active output
@@ -64,9 +61,7 @@ impl MacAudioCapture {
                 let out_lower = out_name.to_lowercase();
                 if out_lower.contains("blackhole") {
                     if let Some(dev) = input_devices.iter().find(|d| {
-                        d.name()
-                            .map(|n| n.to_lowercase().contains(&out_lower))
-                            .unwrap_or(false)
+                        d.name().map(|n| n.to_lowercase().contains(&out_lower)).unwrap_or(false)
                     }) {
                         return Ok(dev.clone());
                     }
@@ -76,27 +71,22 @@ impl MacAudioCapture {
 
         // Priority 3: BlackHole 16ch (Project Standard for 16-channel DAWs & Surround)
         if let Some(dev) = input_devices.iter().find(|d| {
-            d.name()
-                .map(|n| n.to_lowercase().contains("blackhole 16ch"))
-                .unwrap_or(false)
+            d.name().map(|n| n.to_lowercase().contains("blackhole 16ch")).unwrap_or(false)
         }) {
             return Ok(dev.clone());
         }
 
         // Priority 4: BlackHole 2ch (Universal Standard for Stereo Media)
-        if let Some(dev) = input_devices.iter().find(|d| {
-            d.name()
-                .map(|n| n.to_lowercase().contains("blackhole 2ch"))
-                .unwrap_or(false)
-        }) {
+        if let Some(dev) = input_devices
+            .iter()
+            .find(|d| d.name().map(|n| n.to_lowercase().contains("blackhole 2ch")).unwrap_or(false))
+        {
             return Ok(dev.clone());
         }
 
         // Priority 5: BlackHole 64ch
         if let Some(dev) = input_devices.iter().find(|d| {
-            d.name()
-                .map(|n| n.to_lowercase().contains("blackhole 64ch"))
-                .unwrap_or(false)
+            d.name().map(|n| n.to_lowercase().contains("blackhole 64ch")).unwrap_or(false)
         }) {
             return Ok(dev.clone());
         }
@@ -291,11 +281,7 @@ pub fn downmix_frame_to_stereo(frame: &[f32]) -> (f32, f32) {
 
             while i < frame.len() {
                 let pair_l = frame[i];
-                let pair_r = if i + 1 < frame.len() {
-                    frame[i + 1]
-                } else {
-                    pair_l
-                };
+                let pair_r = if i + 1 < frame.len() { frame[i + 1] } else { pair_l };
 
                 if pair_l.abs() > 0.0001 || pair_r.abs() > 0.0001 {
                     if main_silent && !secondary_active {
@@ -328,10 +314,8 @@ impl AudioCapturePort for MacAudioCapture {
         self.running.store(true, Ordering::SeqCst);
 
         let running_thread = Arc::clone(&self.running);
-        let target_override = self
-            .device_name
-            .clone()
-            .or_else(|| std::env::var("AUDIO_DEVICE").ok());
+        let target_override =
+            self.device_name.clone().or_else(|| std::env::var("AUDIO_DEVICE").ok());
 
         std::thread::spawn(move || {
             info!("CoreAudio HAL Auto-Follower supervisor active (monitoring macOS Sound Output)");
