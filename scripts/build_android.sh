@@ -53,7 +53,12 @@ echo "[INFO] Binary output: target/${TARGET_ARCH}/release/client"
 if command -v adb &> /dev/null; then
     DEVICES=$(adb devices | grep -v "List of devices" | grep "device$" || true)
     if [ -n "$DEVICES" ]; then
+        DEVICE_IP=$(adb shell "ip -f inet addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print \$2}' | cut -d/ -f1" | tr -d '\r' || true)
         echo "[INFO] Connected Android device detected via ADB."
+        if [ -n "$DEVICE_IP" ]; then
+            echo "[INFO] Device Wi-Fi IP: ${DEVICE_IP}"
+            echo "[INFO] Stream command: cargo run --bin server -- ${DEVICE_IP}:48480"
+        fi
         read -p "Deploy binary to /data/local/tmp/client and execute? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
