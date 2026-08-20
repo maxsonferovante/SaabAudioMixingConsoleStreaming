@@ -133,6 +133,17 @@ impl MacAudioCapture {
                         };
 
                         if !interleaved_samples.is_empty() {
+                            static COUNTER: std::sync::atomic::AtomicU64 =
+                                std::sync::atomic::AtomicU64::new(0);
+                            let c = COUNTER.fetch_add(1, Ordering::Relaxed);
+                            if c == 0 || c % 500 == 0 {
+                                info!(
+                                    "ScreenCaptureKit: captured audio block #{} ({} samples)",
+                                    c,
+                                    interleaved_samples.len()
+                                );
+                            }
+
                             if let Ok(audio_buf) = AudioBuffer::new(interleaved_samples, 2, 48000) {
                                 if let Ok(mut lock) = cb_clone.lock() {
                                     lock(audio_buf);
@@ -143,6 +154,12 @@ impl MacAudioCapture {
                 }
             },
             SCStreamOutputType::Audio,
+        );
+
+        // Also attach screen handler to ensure OS compositor drives stream clock
+        stream.add_output_handler(
+            |_sample: CMSampleBuffer, _of_type: SCStreamOutputType| {},
+            SCStreamOutputType::Screen,
         );
 
         stream.start_capture().map_err(|e| {

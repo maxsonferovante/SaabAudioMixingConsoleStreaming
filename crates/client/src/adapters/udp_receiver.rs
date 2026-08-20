@@ -39,6 +39,7 @@ impl UdpAudioReceiver {
 
         thread::spawn(move || {
             let mut buf = [0u8; 4096];
+            let mut packet_counter: u64 = 0;
 
             while running_flag.load(Ordering::Relaxed) {
                 match socket.recv_from(&mut buf) {
@@ -63,6 +64,14 @@ impl UdpAudioReceiver {
                                         let sample =
                                             LittleEndian::read_f32(&payload[i * 4..(i + 1) * 4]);
                                         let _ = producer.try_push(sample);
+                                    }
+
+                                    packet_counter += 1;
+                                    if packet_counter == 1 || packet_counter % 500 == 0 {
+                                        info!(
+                                            "UDP Receiver: received packet #{} ({} samples, {}Hz) -> P2 output",
+                                            header.sequence_number, header.sample_count, header.sample_rate
+                                        );
                                     }
                                 }
                             }
@@ -93,5 +102,22 @@ impl UdpAudioReceiver {
 
     pub fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ringbuf::traits::Split;
+    use ringbuf::HeapRb;
+
+    #[test]
+    fn test_udp_receiver_start_stop() {
+        let receiver = UdpAudioReceiver::new();
+        let ring_buffer = HeapRb::<f32>::new(1024);
+        let (prod, _cons) = ring_buffer.split();
+        let bind_addr: SocketAddr = "127.0.0.1:0".parse().unwrap();
+        assert!(receiver.start(bind_addr, prod).is_ok());
+        receiver.stop();
     }
 }

@@ -72,7 +72,22 @@ impl AudioStreamerPort for UdpAudioStreamer {
             .target_addr
             .lock()
             .map_err(|_| CoreError::StreamingError("Mutex poison".into()))?;
-        let _ = self.socket.send_to(&buf_guard[..total_len], target);
+
+        match self.socket.send_to(&buf_guard[..total_len], target) {
+            Ok(bytes) => {
+                if sequence_number == 1 || sequence_number % 500 == 0 {
+                    tracing::info!(
+                        "UDP Streamer: sent packet #{} ({} bytes) -> {}",
+                        sequence_number,
+                        bytes,
+                        target
+                    );
+                }
+            }
+            Err(ref e) => {
+                tracing::warn!("UDP send_to error to {}: {:?}", target, e);
+            }
+        }
 
         Ok(())
     }

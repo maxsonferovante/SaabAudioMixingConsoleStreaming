@@ -7,8 +7,8 @@ use tracing::info;
 
 #[cfg(target_os = "android")]
 use oboe::{
-    AudioOutputCallback, AudioOutputStreamSafe, AudioStreamAsync, AudioStreamBuilder, Output,
-    PerformanceMode, SharingMode, Stereo,
+    AudioOutputCallback, AudioOutputStreamSafe, AudioStream, AudioStreamAsync, AudioStreamBuilder,
+    Output, PerformanceMode, SharingMode, Stereo,
 };
 
 pub struct OboeAudioPlayback {
@@ -64,7 +64,7 @@ impl OboeAudioPlayback {
         let running = Arc::new(AtomicBool::new(true));
         let callback = OboeCallback { consumer, running: Arc::clone(&running) };
 
-        let stream = AudioStreamBuilder::default()
+        let mut stream = AudioStreamBuilder::default()
             .set_format::<f32>()
             .set_channel_count::<Stereo>()
             .set_sample_rate(48000)
@@ -73,7 +73,9 @@ impl OboeAudioPlayback {
             .set_callback(callback)
             .open_stream()?;
 
-        info!("Oboe AAudio stream opened successfully on Android (P2/Headphone output)");
+        stream.start()?;
+
+        info!("Oboe AAudio stream started successfully on Android (P2/Headphone output active)");
 
         Ok(Self { running, _stream: stream })
     }
