@@ -1,20 +1,21 @@
 #[cfg(target_os = "android")]
+use oboe::{
+    AudioOutputCallback, AudioOutputStreamSafe, AudioStream, AudioStreamBuilder, AudioStreamSafe,
+    DataCallbackResult, PerformanceMode, SharingMode, Stereo, StreamState,
+};
+#[cfg(target_os = "android")]
 use ringbuf::traits::Consumer;
 use ringbuf::HeapCons;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tracing::info;
-
 #[cfg(target_os = "android")]
-use oboe::{
-    AudioOutputCallback, AudioOutputStreamSafe, AudioStream, AudioStreamAsync, AudioStreamBuilder,
-    Output, PerformanceMode, SharingMode, Stereo,
-};
+use std::sync::Mutex;
+use tracing::info;
+#[cfg(target_os = "android")]
+use tracing::{error, warn};
 
 pub struct OboeAudioPlayback {
     running: Arc<AtomicBool>,
-    #[cfg(target_os = "android")]
-    _stream: AudioStreamAsync<Output, OboeCallback>,
 }
 
 #[cfg(not(target_os = "android"))]
@@ -31,8 +32,9 @@ impl OboeAudioPlayback {
 
 #[cfg(target_os = "android")]
 pub struct OboeCallback {
-    consumer: HeapCons<f32>,
+    consumer: Arc<Mutex<HeapCons<f32>>>,
     running: Arc<AtomicBool>,
+    disconnected: Arc<AtomicBool>,
 }
 
 #[cfg(target_os = "android")]
@@ -43,18 +45,36 @@ impl AudioOutputCallback for OboeCallback {
         &mut self,
         _audio_stream: &mut dyn AudioOutputStreamSafe,
         frames: &mut [(f32, f32)],
-    ) -> oboe::DataCallbackResult {
-        if !self.running.load(Ordering::Relaxed) {
-            return oboe::DataCallbackResult::Stop;
+    ) -> DataCallbackResult {
+        if !self.running.load(Ordering::Relaxed) || self.disconnected.load(Ordering::Relaxed) {
+            return DataCallbackResult::Stop;
         }
 
-        for frame in frames.iter_mut() {
-            let left = self.consumer.try_pop().unwrap_or(0.0);
-            let right = self.consumer.try_pop().unwrap_or(left);
-            *frame = (left, right);
+        if let Ok(mut cons) = self.consumer.lock() {
+            for frame in frames.iter_mut() {
+                let left = cons.try_pop().unwrap_or(0.0);
+                let right = cons.try_pop().unwrap_or(left);
+                *frame = (left, right);
+            }
+        } else {
+            for frame in frames.iter_mut() {
+                *frame = (0.0, 0.0);
+            }
         }
 
-        oboe::DataCallbackResult::Continue
+        DataCallbackResult::Continue
+    }
+
+    fn on_error_after_close(
+        &mut self,
+        _audio_stream: &mut dyn AudioOutputStreamSafe,
+        error: oboe::Error,
+    ) {
+        warn!(
+            "Oboe AAudio hardware routing change/disconnect: {:?}. Triggering automatic reconnect...",
+            error
+        );
+        self.disconnected.store(true, Ordering::SeqCst);
     }
 }
 
@@ -62,22 +82,73 @@ impl AudioOutputCallback for OboeCallback {
 impl OboeAudioPlayback {
     pub fn start(consumer: HeapCons<f32>) -> Result<Self, anyhow::Error> {
         let running = Arc::new(AtomicBool::new(true));
-        let callback = OboeCallback { consumer, running: Arc::clone(&running) };
+        let running_thread = Arc::clone(&running);
+        let shared_consumer = Arc::new(Mutex::new(consumer));
 
-        let mut stream = AudioStreamBuilder::default()
-            .set_format::<f32>()
-            .set_channel_count::<Stereo>()
-            .set_sample_rate(48000)
-            .set_performance_mode(PerformanceMode::LowLatency)
-            .set_sharing_mode(SharingMode::Exclusive)
-            .set_callback(callback)
-            .open_stream()?;
+        std::thread::spawn(move || {
+            info!("Oboe AAudio supervisor thread active (hot-plug & cable-swap recovery enabled)");
 
-        stream.start()?;
+            while running_thread.load(Ordering::Relaxed) {
+                let disconnected = Arc::new(AtomicBool::new(false));
+                let callback = OboeCallback {
+                    consumer: Arc::clone(&shared_consumer),
+                    running: Arc::clone(&running_thread),
+                    disconnected: Arc::clone(&disconnected),
+                };
 
-        info!("Oboe AAudio stream started successfully on Android (P2/Headphone output active)");
+                let stream_res = AudioStreamBuilder::default()
+                    .set_format::<f32>()
+                    .set_channel_count::<Stereo>()
+                    .set_sample_rate(48000)
+                    .set_performance_mode(PerformanceMode::LowLatency)
+                    .set_sharing_mode(SharingMode::Shared)
+                    .set_callback(callback)
+                    .open_stream();
 
-        Ok(Self { running, _stream: stream })
+                match stream_res {
+                    Ok(mut stream) => {
+                        if let Err(e) = stream.start() {
+                            error!("Failed to start Oboe AAudio stream: {:?}", e);
+                            std::thread::sleep(std::time::Duration::from_millis(300));
+                            continue;
+                        }
+
+                        info!("Oboe AAudio stream running (P2 3.5mm Headphone / Edifier Line-Out)");
+
+                        while running_thread.load(Ordering::Relaxed)
+                            && !disconnected.load(Ordering::Relaxed)
+                        {
+                            match stream.get_state() {
+                                StreamState::Started | StreamState::Starting => {
+                                    std::thread::sleep(std::time::Duration::from_millis(200));
+                                }
+                                StreamState::Disconnected
+                                | StreamState::Closing
+                                | StreamState::Closed => {
+                                    warn!("Oboe AAudio stream disconnected due to jack change. Reopening...");
+                                    break;
+                                }
+                                _ => {
+                                    std::thread::sleep(std::time::Duration::from_millis(200));
+                                }
+                            }
+                        }
+
+                        let _ = stream.stop();
+                        let _ = stream.close();
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                    Err(e) => {
+                        error!("Failed to open Oboe stream: {:?}. Retrying in 300ms...", e);
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                    }
+                }
+            }
+
+            info!("Oboe AAudio supervisor thread terminated");
+        });
+
+        Ok(Self { running })
     }
 
     pub fn stop(&self) {
