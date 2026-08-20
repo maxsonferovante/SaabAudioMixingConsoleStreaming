@@ -103,7 +103,7 @@ pub fn run_start() -> Result<()> {
                     let start_android = Command::new("adb")
                         .args([
                             "shell",
-                            "nohup sh -c 'LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/client' > /data/local/tmp/client.log 2>&1 &",
+                            "export LD_LIBRARY_PATH=/data/local/tmp; nohup /data/local/tmp/client > /data/local/tmp/client.log 2>&1 &",
                         ])
                         .status();
                     match start_android {

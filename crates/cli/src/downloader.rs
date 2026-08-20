@@ -29,7 +29,10 @@ impl AndroidAssetDownloader {
 
         // 3. Download from GitHub Release
         let version = env!("CARGO_PKG_VERSION");
-        info!("Android client binary not found locally. Downloading v{} asset from GitHub Releases...", version);
+        info!(
+            "Android client binary not found locally. Downloading v{} asset from GitHub Releases...",
+            version
+        );
 
         let url = format!(
             "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v{}/client-aarch64-linux-android",
@@ -64,6 +67,82 @@ impl AndroidAssetDownloader {
         }
     }
 
+    pub fn ensure_runtime_on_device(serial: Option<&str>) -> Result<()> {
+        // Check if libc++_shared.so is already on target device
+        let mut check_cmd = Command::new("adb");
+        if let Some(s) = serial {
+            if s != "auto" && !s.is_empty() {
+                check_cmd.args(["-s", s]);
+            }
+        }
+        check_cmd.args(["shell", "test", "-f", "/data/local/tmp/libc++_shared.so"]);
+        if let Ok(st) = check_cmd.status() {
+            if st.success() {
+                return Ok(());
+            }
+        }
+
+        // Locate or download libc++_shared.so
+        let cache_dir = SaabConfig::cache_dir().join("bin");
+        let cached_so = cache_dir.join("libc++_shared.so");
+
+        if !cached_so.exists() {
+            // Check local NDK first
+            let mut found_local = false;
+            if let Ok(home) = std::env::var("HOME") {
+                let ndk_base = PathBuf::from(home).join("Library/Android/sdk/ndk");
+                if ndk_base.exists() {
+                    if let Ok(entries) = std::fs::read_dir(&ndk_base) {
+                        for entry in entries.flatten() {
+                            let cand = entry.path().join("toolchains/llvm/prebuilt/darwin-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so");
+                            if cand.exists() {
+                                let _ = fs::copy(&cand, &cached_so);
+                                found_local = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !found_local {
+                let version = env!("CARGO_PKG_VERSION");
+                let url = format!(
+                    "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v{}/libc++_shared.so",
+                    version
+                );
+                if let Ok(client) =
+                    reqwest::blocking::Client::builder().user_agent("saab-cli").build()
+                {
+                    if let Ok(resp) = client.get(&url).send() {
+                        if resp.status().is_success() {
+                            if let Ok(bytes) = resp.bytes() {
+                                let _ = fs::write(&cached_so, bytes);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if cached_so.exists() {
+            let mut push_cmd = Command::new("adb");
+            if let Some(s) = serial {
+                if s != "auto" && !s.is_empty() {
+                    push_cmd.args(["-s", s]);
+                }
+            }
+            push_cmd.args([
+                "push",
+                cached_so.to_str().unwrap_or_default(),
+                "/data/local/tmp/libc++_shared.so",
+            ]);
+            let _ = push_cmd.status();
+        }
+
+        Ok(())
+    }
+
     pub fn push_to_device(binary_path: &Path, serial: Option<&str>) -> Result<()> {
         info!("Deploying Android client binary to device (/data/local/tmp/client)...");
 
@@ -79,6 +158,9 @@ impl AndroidAssetDownloader {
         if !status.success() {
             anyhow::bail!("adb push failed with exit status: {:?}", status);
         }
+
+        // Ensure runtime library is on device
+        let _ = Self::ensure_runtime_on_device(serial);
 
         // Grant execute permissions
         let mut chmod_cmd = Command::new("adb");
