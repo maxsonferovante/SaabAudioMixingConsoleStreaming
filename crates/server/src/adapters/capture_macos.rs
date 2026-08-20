@@ -55,14 +55,22 @@ impl MacAudioCapture {
             warn!("Specified audio device '{}' not found, falling back to auto-discovery", target);
         }
 
-        // Priority 2: BlackHole 16ch (Project Default)
-        if let Some(dev) = input_devices.iter().find(|d| {
-            d.name().map(|n| n.to_lowercase().contains("blackhole 16ch")).unwrap_or(false)
-        }) {
-            return Ok(dev.clone());
+        // Priority 2: Match active macOS Default Output if it is a BlackHole variant
+        if let Some(default_out) = host.default_output_device() {
+            if let Ok(out_name) = default_out.name() {
+                let out_lower = out_name.to_lowercase();
+                if out_lower.contains("blackhole") {
+                    if let Some(dev) = input_devices.iter().find(|d| {
+                        d.name().map(|n| n.to_lowercase().contains(&out_lower)).unwrap_or(false)
+                    }) {
+                        info!("Auto-detected active macOS Sound Output: {}", out_name);
+                        return Ok(dev.clone());
+                    }
+                }
+            }
         }
 
-        // Priority 3: BlackHole 2ch
+        // Priority 3: BlackHole 2ch (Universal Standard for Spotify/YouTube/Media)
         if let Some(dev) = input_devices
             .iter()
             .find(|d| d.name().map(|n| n.to_lowercase().contains("blackhole 2ch")).unwrap_or(false))
@@ -70,14 +78,21 @@ impl MacAudioCapture {
             return Ok(dev.clone());
         }
 
-        // Priority 4: BlackHole 64ch
+        // Priority 4: BlackHole 16ch (16-channel DAWs & Surround)
+        if let Some(dev) = input_devices.iter().find(|d| {
+            d.name().map(|n| n.to_lowercase().contains("blackhole 16ch")).unwrap_or(false)
+        }) {
+            return Ok(dev.clone());
+        }
+
+        // Priority 5: BlackHole 64ch
         if let Some(dev) = input_devices.iter().find(|d| {
             d.name().map(|n| n.to_lowercase().contains("blackhole 64ch")).unwrap_or(false)
         }) {
             return Ok(dev.clone());
         }
 
-        // Priority 5: Generic BlackHole, Loopback, or Multi-Output
+        // Priority 6: Generic BlackHole, Loopback, or Multi-Output
         if let Some(dev) = input_devices.iter().find(|d| {
             d.name()
                 .map(|n| {
