@@ -70,6 +70,43 @@ impl VuMeterReading {
     }
 }
 
+/// Smooth VU Meter processor with peak hold and exponential release decay
+#[derive(Debug, Clone)]
+pub struct VuMeterState {
+    decay_factor: f32,
+    hold_peak_left: f32,
+    hold_peak_right: f32,
+}
+
+impl Default for VuMeterState {
+    fn default() -> Self {
+        Self::new(0.92)
+    }
+}
+
+impl VuMeterState {
+    pub fn new(decay_factor: f32) -> Self {
+        Self {
+            decay_factor: decay_factor.clamp(0.5, 0.99),
+            hold_peak_left: 0.0,
+            hold_peak_right: 0.0,
+        }
+    }
+
+    pub fn process_reading(&mut self, instant: VuMeterReading) -> VuMeterReading {
+        self.hold_peak_left = (self.hold_peak_left * self.decay_factor).max(instant.peak_left);
+        self.hold_peak_right = (self.hold_peak_right * self.decay_factor).max(instant.peak_right);
+
+        VuMeterReading {
+            peak_left: self.hold_peak_left,
+            peak_right: self.hold_peak_right,
+            rms_left: instant.rms_left,
+            rms_right: instant.rms_right,
+            is_clipping: instant.is_clipping,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,5 +123,24 @@ mod tests {
         let meter = VuMeterReading::compute_from_buffer(&buf);
         assert!(meter.peak_left > 0.8 && meter.peak_left <= 1.0);
         assert!(meter.rms_left > 0.5);
+    }
+
+    #[test]
+    fn test_vu_meter_state_decay() {
+        let mut state = VuMeterState::new(0.9);
+        let reading = VuMeterReading {
+            peak_left: 1.0,
+            peak_right: 1.0,
+            rms_left: 0.7,
+            rms_right: 0.7,
+            is_clipping: true,
+        };
+
+        let first = state.process_reading(reading);
+        assert_eq!(first.peak_left, 1.0);
+
+        let quiet = VuMeterReading::ZERO;
+        let second = state.process_reading(quiet);
+        assert!((second.peak_left - 0.9).abs() < 0.01);
     }
 }

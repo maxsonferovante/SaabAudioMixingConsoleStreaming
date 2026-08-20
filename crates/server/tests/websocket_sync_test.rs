@@ -107,4 +107,24 @@ async fn test_websocket_bidirectional_fader_and_mute_sync() {
         }
         other => panic!("Unexpected telemetry packet: {:?}", other),
     }
+
+    // Test 5: Send Ping and receive Pong RTT
+    let ping_time = 1_000_000u64;
+    client
+        .send_command(ControlCommandDto::Ping { client_timestamp_us: ping_time })
+        .await
+        .expect("send ping");
+
+    let received_pong = tokio::time::timeout(Duration::from_millis(500), telemetry_rx.recv())
+        .await
+        .expect("timeout waiting for pong")
+        .expect("received pong");
+
+    match received_pong {
+        TelemetryPacketDto::Pong { client_timestamp_us, server_timestamp_us } => {
+            assert_eq!(client_timestamp_us, ping_time);
+            assert!(server_timestamp_us > 0);
+        }
+        other => panic!("Expected Pong, got {:?}", other),
+    }
 }

@@ -4,4 +4,4 @@ pub mod vu_meter;
 
 pub use audio_buffer::AudioBuffer;
 pub use volume::{DecibelVolume, GainRamp, LinearGain, MuteState};
-pub use vu_meter::VuMeterReading;
+pub use vu_meter::{VuMeterReading, VuMeterState};

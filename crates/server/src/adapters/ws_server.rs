@@ -96,7 +96,21 @@ where
                 match msg {
                     Some(Ok(Message::Text(text))) => {
                         if let Ok(cmd) = serde_json::from_str::<ControlCommandDto>(&text) {
-                            on_command(cmd);
+                            if let ControlCommandDto::Ping { client_timestamp_us } = cmd {
+                                let server_timestamp_us = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default()
+                                    .as_micros() as u64;
+                                let pong = TelemetryPacketDto::Pong {
+                                    client_timestamp_us,
+                                    server_timestamp_us,
+                                };
+                                if let Ok(json) = serde_json::to_string(&pong) {
+                                    let _ = ws_sender.send(Message::Text(json.into())).await;
+                                }
+                            } else {
+                                on_command(cmd);
+                            }
                         }
                     }
                     Some(Ok(Message::Close(_))) | None => break,
