@@ -174,13 +174,64 @@ cargo run --bin client
 
 ### Compiling and Deploying to Android
 
-Connect an Android 12+ device with USB debugging enabled, then execute:
+The Android client runs on Android 12+ (`aarch64-linux-android`) using Google Oboe with AAudio Exclusive Mode routed directly to the 3.5mm P2 headphone jack.
 
-```bash
-./scripts/build_android.sh
-```
+#### Method 1: Direct USB Cable Deployment
 
-The script configures ADB port forwarding (`adb forward tcp:48480 tcp:48480` and `adb forward tcp:9001 tcp:9001`), compiles the client crate using `cargo-ndk` with release optimizations, pushes the binary and `libc++_shared.so` to `/data/local/tmp/`, and initiates the low-latency Oboe playback engine routed to the 3.5mm P2 jack.
+1. Connect your Android device via USB with **USB Debugging** enabled in Developer Options.
+2. Execute the build and deployment script:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+3. Run the macOS server streaming over USB port forwarding:
+   ```bash
+   cargo run --bin server -- 127.0.0.1:48480
+   ```
+
+---
+
+#### Method 2: Wi-Fi Wireless Deployment
+
+##### Option A: Enable Wi-Fi ADB via USB (Recommended & Quickest)
+1. Connect the USB cable once and initialize TCP/IP mode on port 5555:
+   ```bash
+   adb tcpip 5555
+   ```
+2. Disconnect the USB cable.
+3. Connect ADB to your Android device over Wi-Fi:
+   ```bash
+   adb connect <ANDROID_DEVICE_IP>:5555
+   ```
+4. Deploy and start the client binary wirelessly:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+5. Run the macOS server pointing to your Android device's Wi-Fi IP:
+   ```bash
+   cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+   ```
+
+##### Option B: Native Wireless Debugging (No Cable Required, Android 11+)
+1. On your Android device, navigate to **Settings -> Developer options -> Wireless debugging**.
+2. Enable Wireless debugging and select **Pair device with pairing code**.
+3. Note the IP address, pairing port, and 6-digit code displayed on your device.
+4. On your Mac, pair the device:
+   ```bash
+   adb pair <ANDROID_DEVICE_IP>:<PAIRING_PORT>
+   # Enter the 6-digit pairing code when prompted
+   ```
+5. Note the main connection port shown under "IP address & Port" on your phone, then connect:
+   ```bash
+   adb connect <ANDROID_DEVICE_IP>:<PORT>
+   ```
+6. Deploy and start the client:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+7. Start the macOS audio stream:
+   ```bash
+   cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+   ```
 
 ---
 
