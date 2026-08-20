@@ -1,0 +1,32 @@
+[package]
+name = "cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+default-run = "saab"
+
+[[bin]]
+name = "saab"
+path = "src/main.rs"
+
+[dependencies]
+audio_core = { workspace = true }
+protocol = { workspace = true }
+server = { workspace = true }
+client = { workspace = true }
+
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+dialoguer = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true }
+cpal = { workspace = true }
+iced = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+futures-util = { workspace = true }
