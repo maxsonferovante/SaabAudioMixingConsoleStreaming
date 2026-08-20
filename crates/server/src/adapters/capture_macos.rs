@@ -77,7 +77,7 @@ impl MacAudioCapture {
             return Ok(dev.clone());
         }
 
-        // Priority 5: Generic BlackHole, Loopback, Perssua, or Multi-Output
+        // Priority 5: Generic BlackHole, Loopback, or Multi-Output
         if let Some(dev) = input_devices.iter().find(|d| {
             d.name()
                 .map(|n| {
@@ -122,16 +122,41 @@ pub fn downmix_frame_to_stereo(frame: &[f32]) -> (f32, f32) {
             (l, r)
         }
         _ => {
-            // 16ch or multi-channel: extract main L/R (ch 0 & 1)
-            // with surround fold-down if active
-            if frame.len() >= 6 && (frame[2].abs() > 0.001 || frame[4].abs() > 0.001) {
-                let c = frame[2] * FRAC_1_SQRT_2;
-                let l = frame[0] + c + frame[4] * FRAC_1_SQRT_2;
-                let r = frame[1] + c + frame[5] * FRAC_1_SQRT_2;
-                (l, r)
-            } else {
-                (frame[0], frame[1])
+            // 16-channel or generic multi-channel:
+            let mut l = frame[0];
+            let mut r = frame.get(1).copied().unwrap_or(0.0);
+
+            // Fold in center (Ch 2) if active
+            if let Some(&c) = frame.get(2) {
+                if c.abs() > 0.0001 {
+                    l += c * FRAC_1_SQRT_2;
+                    r += c * FRAC_1_SQRT_2;
+                }
             }
+
+            // Sum additional active stereo pairs (Ch 4-5, 6-7, 8-9, etc.)
+            let mut i = 4;
+            while i < frame.len() {
+                let pair_l = frame[i];
+                let pair_r = if i + 1 < frame.len() { frame[i + 1] } else { pair_l };
+                if pair_l.abs() > 0.0001 || pair_r.abs() > 0.0001 {
+                    l += pair_l * FRAC_1_SQRT_2;
+                    r += pair_r * FRAC_1_SQRT_2;
+                }
+                i += 2;
+            }
+
+            // If main bus (0 & 1) is completely silent but channels 2 & 3 have signal (e.g. secondary stereo routing)
+            if frame[0].abs() <= 0.00001 && frame.get(1).copied().unwrap_or(0.0).abs() <= 0.00001 {
+                if let (Some(&ch2), Some(&ch3)) = (frame.get(2), frame.get(3)) {
+                    if ch2.abs() > 0.0001 || ch3.abs() > 0.0001 {
+                        l = ch2;
+                        r = ch3;
+                    }
+                }
+            }
+
+            (l, r)
         }
     }
 }
@@ -193,16 +218,34 @@ impl AudioCapturePort for MacAudioCapture {
                                 Vec::with_capacity(chunk_frames * 2),
                             );
 
+                            let mut peak: f32 = 0.0;
+                            for &s in &block_samples {
+                                let abs = s.abs();
+                                if abs > peak {
+                                    peak = abs;
+                                }
+                            }
+
                             static BLOCK_COUNTER: std::sync::atomic::AtomicU64 =
                                 std::sync::atomic::AtomicU64::new(0);
                             let count = BLOCK_COUNTER.fetch_add(1, Ordering::Relaxed);
                             if count == 0 || count % 500 == 0 {
-                                info!(
-                                    "BlackHole Capture: processed block #{} ({} samples, {}Hz)",
-                                    count,
-                                    block_samples.len() / 2,
-                                    sample_rate
-                                );
+                                if peak > 0.0001 {
+                                    info!(
+                                        "BlackHole Capture: block #{} ({} samples, {}Hz, peak signal: {:.4})",
+                                        count,
+                                        block_samples.len() / 2,
+                                        sample_rate,
+                                        peak
+                                    );
+                                } else {
+                                    info!(
+                                        "BlackHole Capture: block #{} ({} samples, {}Hz, SILENCE - check macOS Output)",
+                                        count,
+                                        block_samples.len() / 2,
+                                        sample_rate
+                                    );
+                                }
                             }
 
                             if let Ok(buffer) = AudioBuffer::new(block_samples, 2, sample_rate) {
