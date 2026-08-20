@@ -121,17 +121,49 @@ SaabAudioMixingConsoleStreaming/
 
 ---
 
-### Running the Server (macOS)
+## Quick Start with `saab` CLI
 
-1. Set your macOS audio output to **BlackHole 16ch** or **BlackHole 2ch** in **System Settings -> Sound -> Output**.
-2. Execute the server binary on macOS, pointing to the Android device IP:
+The `saab` CLI eliminates multi-terminal operational friction by managing the entire audio streaming lifecycle through background services:
 
 ```bash
-cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+# 1. Interactive setup with hardware auto-discovery
+saab configure
+
+# 2. Launch macOS server and Android node in the background
+saab start
+
+# 3. Open the Dedicated Studio Touch Console (Iced GUI)
+saab studio
+
+# 4. Check real-time service health, driver, and latency
+saab status
+
+# 5. Stream real-time logs
+saab logs --server-mac
+saab logs --device-android
+
+# 6. Stop all background services cleanly
+saab stop
 ```
 
-- **Audio Capture**: Automatically synchronizes and binds to the active macOS sound output driver (**BlackHole 2ch** or **BlackHole 16ch**).
-- **WebSocket Control Server**: Listening on `ws://0.0.0.0:9001`.
+---
+
+### Manual Execution (Development Mode)
+
+If you prefer to run services manually in dedicated terminal windows during development:
+
+1. **Terminal 1: Start macOS Capture Server**
+   ```bash
+   cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+   ```
+2. **Terminal 2: Deploy & Start Android Audio Daemon**
+   ```bash
+   ./scripts/build_android.sh
+   ```
+3. **Terminal 3: Launch Studio Touch Console**
+   ```bash
+   cargo run --bin client
+   ```
 
 ---
 
