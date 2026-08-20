@@ -85,7 +85,7 @@ if command -v adb &> /dev/null; then
             adb forward --remove-all 2>/dev/null || true
             adb reverse --remove-all 2>/dev/null || true
             adb forward tcp:48480 tcp:48480
-            adb forward tcp:9001 tcp:9001
+            adb reverse tcp:9001 tcp:9001
             adb push "target/${TARGET_ARCH}/release/client" /data/local/tmp/client
             adb shell chmod +x /data/local/tmp/client
             echo "[INFO] Starting client binary on target device (P2 3.5mm routing)..."

@@ -151,6 +151,8 @@ impl Application for ConsoleApp {
             }
             Message::ConnectionFailed => {
                 self.is_connected = false;
+                self.ws_client = None;
+                self.telemetry_rx = None;
             }
             Message::TelemetryReceived(telemetry) => match telemetry {
                 TelemetryPacketDto::VuMeter {
@@ -183,6 +185,27 @@ impl Application for ConsoleApp {
                             }
                         },
                         |_| Message::Noop,
+                    );
+                } else {
+                    let ws_url = self.server_ws_url.clone();
+                    return Command::perform(
+                        async move {
+                            let (tx, rx) = mpsc::unbounded_channel();
+                            match WebSocketClient::connect(&ws_url, move |telemetry| {
+                                let _ = tx.send(telemetry);
+                            })
+                            .await
+                            {
+                                Ok(client) => {
+                                    Ok((client, std::sync::Arc::new(tokio::sync::Mutex::new(rx))))
+                                }
+                                Err(_) => Err(()),
+                            }
+                        },
+                        |result| match result {
+                            Ok((client, rx)) => Message::Connected(client, rx),
+                            Err(_) => Message::ConnectionFailed,
+                        },
                     );
                 }
             }
