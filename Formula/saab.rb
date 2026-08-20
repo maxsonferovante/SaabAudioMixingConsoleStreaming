@@ -1,15 +1,15 @@
 class Saab < Formula
   desc "Ultra-low-latency distributed audio mixing console CLI for macOS and Android"
   homepage "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming"
-  version "0.4.1"
+  version "0.4.4"
   license "MIT"
 
   if Hardware::CPU.arm?
-    url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v0.4.1/saab-v0.4.1-macos-arm64.tar.gz"
-    sha256 "e079daded459a4908cf084bddc43751edff423bc5c6c138d11caf56f349c4651"
+    url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v0.4.1/saab-v0.4.4-macos-arm64.tar.gz"
+    sha256 "e079daded459a4908cf084bddc43751edff423bc5c6c138d11caf56f349c4643"
   else
-    url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v0.4.1/saab-v0.4.1-macos-x86_64.tar.gz"
-    sha256 "030597975027ed29b619546182038b50a2cada4e9c5661ad947987b5d72d7cec"
+    url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v0.4.1/saab-v0.4.4-macos-x86_64.tar.gz"
+    sha256 "030597975027ed29b619546182038b50a2cada4e9c5661ad947987b5d72d7c12"
   end
 
   def install
