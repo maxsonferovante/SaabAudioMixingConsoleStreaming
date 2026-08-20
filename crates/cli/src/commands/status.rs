@@ -20,7 +20,8 @@ pub fn run_status() -> Result<()> {
         if let Ok(pid_str) = fs::read_to_string(&server_pid_file) {
             let pid = pid_str.trim();
             // Check if PID is alive via kill -0
-            let check = Command::new("kill").args(["-0", pid]).status();
+            let check =
+                Command::new("kill").args(["-0", pid]).stderr(std::process::Stdio::null()).status();
             if let Ok(st) = check {
                 if st.success() {
                     server_running = true;
@@ -35,8 +36,10 @@ pub fn run_status() -> Result<()> {
     } else {
         println!("  - Status          : STOPPED");
     }
+    let ip_only =
+        config.network.android_ip.split(':').next().unwrap_or(&config.network.android_ip).trim();
     println!("  - Audio Driver    : {}", config.audio.device_name);
-    println!("  - Target Endpoint : {}:{}", config.network.android_ip, config.network.audio_port);
+    println!("  - Target Endpoint : {}:{}", ip_only, config.network.audio_port);
     println!("  - WebSocket Host  : ws://127.0.0.1:{}", config.network.ws_port);
 
     // 2. Android Node Status
