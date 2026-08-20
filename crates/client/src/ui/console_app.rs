@@ -221,9 +221,9 @@ impl Application for ConsoleApp {
     fn view(&self) -> Element<'_, Self::Message> {
         // Status Bar Header
         let status_badge = if self.is_connected {
-            text("🟢 CONNECTED").size(13).style(iced::theme::Text::Color(METER_GREEN))
+            text("[ONLINE]").size(13).style(iced::theme::Text::Color(METER_GREEN))
         } else {
-            text("🔴 DISCONNECTED").size(13).style(iced::theme::Text::Color(METER_RED))
+            text("[OFFLINE]").size(13).style(iced::theme::Text::Color(METER_RED))
         };
 
         let latency_badge = text(format!("RTT: {:.1} ms", self.rtt_ms))

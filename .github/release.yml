@@ -1,0 +1,26 @@
+changelog:
+  categories:
+    - title: 'Features & Capabilities'
+      labels:
+        - 'enhancement'
+        - 'feature'
+    - title: 'Audio Engine & DSP'
+      labels:
+        - 'audio'
+        - 'dsp'
+    - title: 'Bug Fixes'
+      labels:
+        - 'bug'
+        - 'fix'
+    - title: 'Networking & Streaming'
+      labels:
+        - 'networking'
+        - 'protocol'
+    - title: 'Maintenance & Chores'
+      labels:
+        - 'chore'
+        - 'documentation'
+        - 'ci'
+  contributors:
+    exclude:
+      - 'dependabot[bot]'
