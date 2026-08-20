@@ -1,16 +1,16 @@
 ## What to build
 
-Um motor de processamento digital de sinal (DSP) puro em `core` que aplica curva de fader logarítmica de broadcast (-inf a +6dB), rampa suave de ganho anti-pop de 5ms ao mutar/desmutar e botão de Dim (-20dB), integrado a um servidor WebSocket no Mac e cliente WebSocket que sincroniza o estado e os comandos de controle em tempo real com baixa latência.
+A pure digital signal processing (DSP) engine in `core` that applies a professional broadcast logarithmic fader curve (-inf to +6dB), a smooth 5ms anti-pop gain ramp when muting/unmuting, and a Dim button (-20dB), integrated with a WebSocket server on macOS and a WebSocket client that synchronizes state and control commands in real-time with low latency.
 
 ## Acceptance criteria
 
-- [x] Tipos de valor de domínio imutáveis `DecibelVolume`, `LinearGain` e `MuteState` em `core::domain`.
-- [x] Implementação de interpolação linear de ganho em 240 amostras (5ms a 48kHz) para evitar cliques e estalos de transição no áudio.
-- [x] Contratos de mensagens de controle WebSocket (`ControlCommandDto`: `SetVolume`, `ToggleMute`, `ToggleDim`) em `protocol`.
-- [x] Servidor WebSocket em `server` executado com Tokio processando comandos e atualizando o DSP atômico em tempo de execução.
-- [x] Cliente WebSocket em `client` enviando atualizações de volume e recebendo confirmações de estado.
-- [x] Testes unitários do domínio verificando atenuação precisa de volume e suavidade do anti-pop sem distorções.
+- [x] Immutable domain value types `DecibelVolume`, `LinearGain`, and `MuteState` in `core::domain`.
+- [x] Implementation of linear gain interpolation over 240 samples (5ms at 48kHz) to eliminate audio clicks and pops during transitions.
+- [x] WebSocket control message contracts (`ControlCommandDto`: `SetMasterVolume`, `SetMute`, `SetDim`) in `protocol`.
+- [x] WebSocket server in `server` executed with Tokio processing commands and updating the DSP state at runtime.
+- [x] WebSocket client in `client` sending volume updates and receiving state confirmations.
+- [x] Domain unit tests verifying accurate volume attenuation and anti-pop smoothness without distortion.
 
 ## Blocked by
 
-- [01 — Scaffolding do Workspace e Streaming de Áudio Loopback Puro](01-scaffolding-loopback-audio.md)
+- [01 — Workspace Scaffolding and Pure Loopback Audio Streaming](01-scaffolding-loopback-audio.md)

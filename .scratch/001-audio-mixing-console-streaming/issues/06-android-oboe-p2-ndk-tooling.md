@@ -1,15 +1,15 @@
 ## What to build
 
-Um adaptador de saída de áudio de ultra-baixa latência para Android utilizando Google `oboe` (AAudio) em modo exclusivo de alta performance, consumindo pacotes do buffer de recepção UDP e direcionando o áudio analógico para o conector 3.5mm P2 (ou adaptador P2/USB-C), junto com scripts e automação de build NDK (`cargo-ndk`) e deploy ADB para dispositivos com Android 12+.
+An ultra-low latency audio output adapter for Android using Google `oboe` (AAudio) in exclusive high-performance mode, consuming packets from the UDP jitter reception buffer and routing analog audio to the 3.5mm P2 connector (or P2/USB-C adapter), along with build automation scripts for NDK (`cargo-ndk`) and ADB deployment on Android 12+ devices.
 
 ## Acceptance criteria
 
-- [x] Adaptador de playback `OboeAudioPlayback` utilizando a crate `oboe` para saída de áudio em modo exclusivo de baixa latência (`PerformanceMode::LowLatency`).
-- [x] Roteamento de áudio configurado para a saída de fone de ouvido / alto-falante externo (conector 3.5mm P2).
-- [x] Consumo lock-free de amostras do ring buffer de jitter na callback em tempo real do AAudio.
-- [x] Script `scripts/build_android.sh` configurado para compilar a crate `client` para arquitetura `aarch64-linux-android` usando `cargo-ndk` e instalar via `adb`.
-- [x] Teste e validação de streaming contínuo sem cortes entre o Mac e o smartphone Android na rede local.
+- [x] Audio playback adapter `OboeAudioPlayback` using the `oboe` crate for low-latency audio output in exclusive mode (`PerformanceMode::LowLatency`).
+- [x] Audio routing configured for headphone / external line-out output (3.5mm P2 connector).
+- [x] Lock-free sample consumption from the circular jitter ring buffer in the real-time AAudio callback.
+- [x] Automation script `scripts/build_android.sh` configured to build the `client` crate for `aarch64-linux-android` architecture using `cargo-ndk` and install via `adb`.
+- [x] Test and validation of continuous drop-free streaming between macOS and Android smartphones over the local network.
 
 ## Blocked by
 
-- [05 — Interface Gráfica Tátil Iced (Console Studio Dark)](05-iced-touch-console-ui.md)
+- [05 — Tactile Iced GUI (Studio Dark Console)](05-iced-touch-console-ui.md)
