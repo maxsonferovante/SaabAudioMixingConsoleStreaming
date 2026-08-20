@@ -85,6 +85,9 @@ mod tests {
         assert_eq!(logs_mac.command, Commands::Logs { server_mac: true, device_android: false });
 
         let logs_android = Cli::try_parse_from(["saab", "logs", "--device-android"]).unwrap();
-        assert_eq!(logs_android.command, Commands::Logs { server_mac: false, device_android: true });
+        assert_eq!(
+            logs_android.command,
+            Commands::Logs { server_mac: false, device_android: true }
+        );
     }
 }

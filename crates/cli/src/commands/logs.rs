@@ -18,7 +18,10 @@ pub fn run_logs(server_mac: bool, device_android: bool) -> Result<()> {
             println!("No server log file found at {:?}. Has 'saab start' been run?", log_file);
             return Ok(());
         }
-        println!("=== Streaming macOS Server Logs ===\nFile: {:?}\n(Press Ctrl+C to exit)\n", log_file);
+        println!(
+            "=== Streaming macOS Server Logs ===\nFile: {:?}\n(Press Ctrl+C to exit)\n",
+            log_file
+        );
         let _ = Command::new("tail")
             .args(["-n", "50", "-f", log_file.to_str().unwrap_or_default()])
             .status();

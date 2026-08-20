@@ -35,29 +35,21 @@ impl Default for SaabConfig {
     fn default() -> Self {
         Self {
             version: "1.0".to_string(),
-            audio: AudioConfig {
-                device_name: "BlackHole 16ch".to_string(),
-                sample_rate: 48000,
-            },
+            audio: AudioConfig { device_name: "BlackHole 16ch".to_string(), sample_rate: 48000 },
             network: NetworkConfig {
                 mode: "wifi".to_string(),
                 android_ip: "127.0.0.1".to_string(),
                 audio_port: 48480,
                 ws_port: 9001,
             },
-            adb: AdbConfig {
-                target_device: "auto".to_string(),
-                auto_reverse_port: true,
-            },
+            adb: AdbConfig { target_device: "auto".to_string(), auto_reverse_port: true },
         }
     }
 }
 
 impl SaabConfig {
     pub fn config_dir() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.config"))
-            .join("saab")
+        dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config")).join("saab")
     }
 
     pub fn config_file_path() -> PathBuf {
@@ -73,9 +65,7 @@ impl SaabConfig {
     }
 
     pub fn cache_dir() -> PathBuf {
-        dirs::cache_dir()
-            .unwrap_or_else(|| PathBuf::from("~/.cache"))
-            .join("saab")
+        dirs::cache_dir().unwrap_or_else(|| PathBuf::from("~/.cache")).join("saab")
     }
 
     pub fn load() -> Result<Self> {
@@ -131,20 +121,14 @@ mod tests {
     fn test_config_serialization_roundtrip() {
         let original = SaabConfig {
             version: "1.0".to_string(),
-            audio: AudioConfig {
-                device_name: "BlackHole 2ch".to_string(),
-                sample_rate: 96000,
-            },
+            audio: AudioConfig { device_name: "BlackHole 2ch".to_string(), sample_rate: 96000 },
             network: NetworkConfig {
                 mode: "wifi".to_string(),
                 android_ip: "192.168.15.5".to_string(),
                 audio_port: 48480,
                 ws_port: 9001,
             },
-            adb: AdbConfig {
-                target_device: "device-123".to_string(),
-                auto_reverse_port: true,
-            },
+            adb: AdbConfig { target_device: "device-123".to_string(), auto_reverse_port: true },
         };
 
         let json = serde_json::to_string_pretty(&original).unwrap();

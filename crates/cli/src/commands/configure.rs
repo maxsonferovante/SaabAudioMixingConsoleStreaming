@@ -69,7 +69,8 @@ pub fn run_configure() -> Result<()> {
         }
     }
 
-    let mode_options = vec!["Wi-Fi Network Streaming (Recommended)", "Direct USB Cable (ADB Port Forward)"];
+    let mode_options =
+        vec!["Wi-Fi Network Streaming (Recommended)", "Direct USB Cable (ADB Port Forward)"];
     let mode_idx = Select::new()
         .with_prompt("Select Connection Mode")
         .items(&mode_options)
@@ -79,7 +80,9 @@ pub fn run_configure() -> Result<()> {
     let (mode_str, default_ip) = if mode_idx == 0 {
         let default_ip = if !auto_detected_ip.is_empty() {
             auto_detected_ip
-        } else if !current_config.network.android_ip.is_empty() && current_config.network.android_ip != "127.0.0.1" {
+        } else if !current_config.network.android_ip.is_empty()
+            && current_config.network.android_ip != "127.0.0.1"
+        {
             current_config.network.android_ip
         } else {
             "192.168.15.5".to_string()
@@ -104,16 +107,9 @@ pub fn run_configure() -> Result<()> {
         .default(current_config.network.ws_port)
         .interact_text()?;
 
-    current_config.audio = AudioConfig {
-        device_name: selected_device,
-        sample_rate: 48000,
-    };
-    current_config.network = NetworkConfig {
-        mode: mode_str.to_string(),
-        android_ip,
-        audio_port,
-        ws_port,
-    };
+    current_config.audio = AudioConfig { device_name: selected_device, sample_rate: 48000 };
+    current_config.network =
+        NetworkConfig { mode: mode_str.to_string(), android_ip, audio_port, ws_port };
     current_config.adb = AdbConfig {
         target_device: attached_devices.first().cloned().unwrap_or_else(|| "auto".to_string()),
         auto_reverse_port: true,

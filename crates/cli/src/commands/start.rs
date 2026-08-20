@@ -25,7 +25,10 @@ pub fn run_start() -> Result<()> {
     if server_pid_file.exists() {
         if let Ok(pid_str) = fs::read_to_string(&server_pid_file) {
             if let Ok(pid) = pid_str.trim().parse::<i32>() {
-                println!("[Process Supervisor] Detected active server PID {}. Restarting service...", pid);
+                println!(
+                    "[Process Supervisor] Detected active server PID {}. Restarting service...",
+                    pid
+                );
                 let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).status();
                 thread::sleep(Duration::from_millis(300));
             }
@@ -82,17 +85,23 @@ pub fn run_start() -> Result<()> {
                 } else {
                     // Configure ADB ports
                     println!("[Android Node] Configuring ADB port forwarding...");
-                    let _ = Command::new("adb").args(["forward", "tcp:48480", "tcp:48480"]).status();
+                    let _ =
+                        Command::new("adb").args(["forward", "tcp:48480", "tcp:48480"]).status();
                     let _ = Command::new("adb").args(["reverse", "tcp:9001", "tcp:9001"]).status();
 
                     // Kill any previous instance on Android
-                    let _ = Command::new("adb").args(["shell", "pkill -9 -f /data/local/tmp/client"]).status();
+                    let _ = Command::new("adb")
+                        .args(["shell", "pkill -9 -f /data/local/tmp/client"])
+                        .status();
                     thread::sleep(Duration::from_millis(200));
 
                     // Launch client in background on Android
                     println!("[Android Node] Spawning audio playback engine in background...");
                     let start_android = Command::new("adb")
-                        .args(["shell", "nohup /data/local/tmp/client > /data/local/tmp/client.log 2>&1 &"])
+                        .args([
+                            "shell",
+                            "nohup /data/local/tmp/client > /data/local/tmp/client.log 2>&1 &",
+                        ])
                         .status();
                     match start_android {
                         Ok(st) if st.success() => {
@@ -109,7 +118,10 @@ pub fn run_start() -> Result<()> {
             }
         }
     } else {
-        println!("[INFO] No USB ADB device detected. Audio will stream over Wi-Fi directly to {}", target_addr);
+        println!(
+            "[INFO] No USB ADB device detected. Audio will stream over Wi-Fi directly to {}",
+            target_addr
+        );
     }
 
     println!("\n=== All Services Successfully Started ===");
