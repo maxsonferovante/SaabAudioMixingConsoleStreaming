@@ -27,9 +27,19 @@ if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -z "${NDK_HOME:-}" ]; then
     echo "[INFO] Searching standard Android SDK locations..."
     if [ -d "$HOME/Library/Android/sdk/ndk" ]; then
         NDK_DIR=$(find "$HOME/Library/Android/sdk/ndk" -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
-        export ANDROID_NDK_HOME="$NDK_DIR"
-        echo "[INFO] Found NDK at: $ANDROID_NDK_HOME"
+        if [ -n "$NDK_DIR" ]; then
+            export ANDROID_NDK_HOME="$NDK_DIR"
+            echo "[INFO] Found NDK at: $ANDROID_NDK_HOME"
+        fi
     fi
+fi
+
+if [ -z "${ANDROID_NDK_HOME:-}" ]; then
+    echo "[ERROR] Android NDK not found on system."
+    echo "To install the NDK, run:"
+    echo "  ~/Library/Android/sdk/cmdline-tools/latest/bin/sdkmanager --install \"ndk;27.2.12479018\""
+    echo "Or install 'NDK (Side by side)' via Android Studio SDK Manager."
+    exit 1
 fi
 
 # 4. Build Client with Release Profile
