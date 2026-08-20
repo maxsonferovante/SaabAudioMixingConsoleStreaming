@@ -159,11 +159,17 @@ jobs:
               sha256 "${X86_64_SHA}"
             end
 
-            depends_on "blackhole-16ch"
-
             def install
               bin.install "saab"
               bin.install "server" if File.exist?("server")
+            end
+
+            def caveats
+              <<~EOS
+                Saab captures macOS system audio via CoreAudio HAL loopback drivers.
+                If you do not have BlackHole 16ch installed yet, run:
+                  brew install --cask blackhole-16ch
+              EOS
             end
 
             test do
