@@ -162,13 +162,70 @@ If the server logs indicate packets are being transmitted but reports silence:
 
 ---
 
-### Running the Desktop Client (macOS Simulator)
+## Dedicated Studio Touch Console (Iced GUI)
 
-Execute the client binary locally for testing and simulation:
+The **Dedicated Studio Touch Console** is the professional graphical control interface of the system, built with the `iced` GUI framework in pure Rust. It operates as a physical digital studio mixer with a sleek *Studio Dark* aesthetic.
 
-```bash
-cargo run --bin client
+<p align="center">
+  <img src="assets/saab_audio_console.png" alt="Saab Audio Mixing Console UI" width="280" />
+</p>
+
+### 1. Console Features and Subsystems
+
+- **Tactile Logarithmic Fader**: Smooth volume control scaling from $-\infty\text{ dB}$, $-60\text{ dB}$ up to $+6\text{ dB}$ with a frame-accurate 5ms linear gain ramp (*anti-pop* interpolation) to eliminate audio clicks and transient artifacts.
+- **60fps Stereo VU Meters**: Dual dynamic signal meters with color-gradient segment bars (Green -> Yellow -> Red) displaying independent RMS energy and instantaneous True Peak for Left and Right channels, including clipping detection.
+- **Tactile MUTE Button**: Instant audio muting with visual red illumination feedback.
+- **Tactile DIM Button (-20 dB)**: Instant 20 dB attenuation for quick conversation without losing the current fader position.
+- **Telemetry and RTT Latency Monitor**: Real-time connection status indicator (`[ONLINE]` / `[STANDBY]`) and network round-trip time (RTT in milliseconds) computed via WebSocket ping/pong messages.
+
+### 2. Ecosystem Topology (macOS Server, Android Audio Node, Studio Console)
+
+The system coordinates audio streaming and state synchronization over two dedicated channels (UDP on port `48480` and WebSocket on port `9001`):
+
 ```
++--------------------------------+            +-------------------------------+
+|     macOS Server Engine        |  UDP Audio |     Android Device (P2 Jack)  |
+|  - BlackHole 16ch CoreAudio    | ---------> |  - Google Oboe AAudio Engine  |
+|  - ITU-R BS.775 Downmixer      |            |  - 3.5mm Output to Speakers   |
+|  - DSP Fader, Mute & Dim       |            +-------------------------------+
+|  - WebSocket Server (:9001)    |                           ^
++--------------------------------+                           |
+                ^                                            |
+                | VU Meters Telemetry (60fps)                | State
+                | Volume, Mute, Dim Commands                 | Sync
+                v                                            |
++------------------------------------------------------------+----------------+
+|                   Studio Touch Console (Iced GUI)                           |
+|   - Master Fader, Stereo VU Meters, Mute/Dim Switches, RTT Latency Monitor  |
++-----------------------------------------------------------------------------+
+```
+
+### 3. Step-by-Step Usage Guide
+
+#### Option A: Running the Studio Touch Console on Desktop or Second Monitor
+
+To control the mix from your workstation or a secondary touch display while the Android device routes analog audio to external speakers (e.g. Edifier):
+
+1. **Step 1: Start the macOS Audio Server** (Terminal 1):
+   ```bash
+   cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
+   ```
+2. **Step 2: Launch the Studio Touch Console** (Terminal 2):
+   ```bash
+   cargo run --bin client
+   ```
+3. The console window will open immediately, automatically connect to the backend WebSocket (`ws://127.0.0.1:9001`), display the `[ONLINE]` status with live 60fps VU meters, and allow dragging the fader or toggling Mute/Dim.
+
+#### Option B: Android Device as Dedicated P2 Audio Receiver (Oboe Daemon)
+
+The deployment script `./scripts/build_android.sh` compiles the client optimized for `aarch64-linux-android` and executes it directly on the Android hardware via ADB:
+
+1. **Step 1: Deploy and Run the Android Audio Daemon**:
+   ```bash
+   ./scripts/build_android.sh
+   ```
+2. The phone acts as a dedicated Digital-to-Analog (D/A) audio processor using Google Oboe / AAudio in exclusive low-latency mode, feeding the 3.5mm P2 connector to your external sound system with sub-5ms latency.
+3. Every volume, mute, or dim adjustment made on the Studio Touch Console reflects instantly on the physical audio output of the Android device.
 
 ---
 
