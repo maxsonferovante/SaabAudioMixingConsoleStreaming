@@ -121,6 +121,25 @@ SaabAudioMixingConsoleStreaming/
 
 ---
 
+## Installation via Homebrew
+
+Install the `saab` CLI directly from this repository:
+
+```bash
+# 1. Tap this repository
+brew tap maxsonferovante/saab https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming
+
+# 2. Install saab CLI & macOS Server
+brew install saab
+```
+
+Or install directly via the formula URL:
+```bash
+brew install https://raw.githubusercontent.com/maxsonferovante/SaabAudioMixingConsoleStreaming/main/Formula/saab.rb
+```
+
+---
+
 ## Quick Start with `saab` CLI
 
 The `saab` CLI eliminates multi-terminal operational friction by managing the entire audio streaming lifecycle through background services:
