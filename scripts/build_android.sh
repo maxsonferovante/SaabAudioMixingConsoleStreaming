@@ -52,6 +52,16 @@ echo "[INFO] Binary output: target/${TARGET_ARCH}/release/client"
 # 5. Optional ADB Push & Execution
 if command -v adb &> /dev/null; then
     DEVICES=$(adb devices | grep -v "List of devices" | grep "device$" || true)
+    if [ -z "$DEVICES" ]; then
+        echo "[INFO] No USB device attached."
+        read -p "Connect to Android device via Wi-Fi? (e.g. 192.168.15.5:5555 or IP:PORT, or Enter to skip): " WIFI_TARGET
+        if [ -n "$WIFI_TARGET" ]; then
+            echo "[INFO] Connecting to $WIFI_TARGET via Wi-Fi ADB..."
+            adb connect "$WIFI_TARGET" || true
+            DEVICES=$(adb devices | grep -v "List of devices" | grep "device$" || true)
+        fi
+    fi
+
     if [ -n "$DEVICES" ]; then
         DEVICE_IP=$(adb shell "ip -f inet addr show wlan0 2>/dev/null | grep 'inet ' | awk '{print \$2}' | cut -d/ -f1" | tr -d '\r' || true)
         echo "[INFO] Connected Android device detected via ADB."
