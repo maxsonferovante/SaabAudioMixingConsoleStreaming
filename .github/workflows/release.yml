@@ -55,9 +55,10 @@ jobs:
         run: cargo install cargo-ndk
 
       - name: Setup Android NDK
-        uses: nsubiron/setup-ndk@v2
+        uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
+          link-to-sdk: true
 
       - name: Build Android Client Binary
         run: |
