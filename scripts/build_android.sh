@@ -11,46 +11,45 @@ echo "=== AudioMixingConsole Android Build & Deploy ==="
 
 # 1. Check Cargo NDK
 if ! command -v cargo-ndk &> /dev/null; then
-    echo "⚠️ cargo-ndk not found. Installing cargo-ndk..."
+    echo "[INFO] cargo-ndk not found. Installing cargo-ndk..."
     cargo install cargo-ndk
 fi
 
 # 2. Check Rust target
 if ! rustup target list | grep -q "${TARGET_ARCH} (installed)"; then
-    echo "📦 Adding Rust target ${TARGET_ARCH}..."
+    echo "[INFO] Adding Rust target ${TARGET_ARCH}..."
     rustup target add "${TARGET_ARCH}"
 fi
 
 # 3. Check ANDROID_NDK_HOME
 if [ -z "${ANDROID_NDK_HOME:-}" ] && [ -z "${NDK_HOME:-}" ]; then
-    echo "⚠️ Neither ANDROID_NDK_HOME nor NDK_HOME is set."
-    echo "Please export ANDROID_NDK_HOME=/path/to/android-sdk/ndk/x.y.z"
-    echo "Attempting standard Android SDK locations..."
+    echo "[WARN] Neither ANDROID_NDK_HOME nor NDK_HOME is set."
+    echo "[INFO] Searching standard Android SDK locations..."
     if [ -d "$HOME/Library/Android/sdk/ndk" ]; then
         NDK_DIR=$(find "$HOME/Library/Android/sdk/ndk" -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
         export ANDROID_NDK_HOME="$NDK_DIR"
-        echo "Found NDK at: $ANDROID_NDK_HOME"
+        echo "[INFO] Found NDK at: $ANDROID_NDK_HOME"
     fi
 fi
 
 # 4. Build Client with Release Profile
-echo "🚀 Compiling client crate for ${TARGET_ARCH} (Android 12+)..."
+echo "[INFO] Compiling client crate for ${TARGET_ARCH} (Android 12+)..."
 cargo ndk -t arm64-v8a -p "${MIN_SDK_VERSION}" -- build --package client --release
 
-echo "✅ Build completed successfully!"
-echo "Binary output: target/${TARGET_ARCH}/release/client"
+echo "[INFO] Build completed successfully."
+echo "[INFO] Binary output: target/${TARGET_ARCH}/release/client"
 
 # 5. Optional ADB Push & Execution
 if command -v adb &> /dev/null; then
     DEVICES=$(adb devices | grep -v "List of devices" | grep "device$" || true)
     if [ -n "$DEVICES" ]; then
-        echo "📱 Connected Android device detected via ADB."
-        read -p "Do you want to deploy binary to /data/local/tmp/client and run? (y/N) " -n 1 -r
+        echo "[INFO] Connected Android device detected via ADB."
+        read -p "Deploy binary to /data/local/tmp/client and execute? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             adb push "target/${TARGET_ARCH}/release/client" /data/local/tmp/client
             adb shell chmod +x /data/local/tmp/client
-            echo "🎧 Starting AudioMixingConsole client on Android device (P2 3.5mm output)..."
+            echo "[INFO] Starting client binary on target device (P2 3.5mm routing)..."
             adb shell /data/local/tmp/client
         fi
     fi
