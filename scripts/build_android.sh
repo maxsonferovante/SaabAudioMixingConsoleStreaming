@@ -57,10 +57,15 @@ if command -v adb &> /dev/null; then
         read -p "Deploy binary to /data/local/tmp/client and execute? (y/N) " -n 1 -r
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
+            LIBCXX_PATH=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" | grep "aarch64" | head -n 1 || true)
+            if [ -n "$LIBCXX_PATH" ]; then
+                echo "[INFO] Transferring libc++_shared.so to device..."
+                adb push "$LIBCXX_PATH" /data/local/tmp/libc++_shared.so
+            fi
             adb push "target/${TARGET_ARCH}/release/client" /data/local/tmp/client
             adb shell chmod +x /data/local/tmp/client
             echo "[INFO] Starting client binary on target device (P2 3.5mm routing)..."
-            adb shell /data/local/tmp/client
+            adb shell "LD_LIBRARY_PATH=/data/local/tmp /data/local/tmp/client"
         fi
     fi
 fi
