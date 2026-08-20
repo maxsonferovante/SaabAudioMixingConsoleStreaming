@@ -3,25 +3,38 @@ use audio_core::error::CoreError;
 use audio_core::ports::secondary::AudioStreamerPort;
 use byteorder::{ByteOrder, LittleEndian};
 use protocol::{AudioPacketHeader, SampleFormat, HEADER_SIZE};
-use std::net::{SocketAddr, UdpSocket};
+use std::io::Write;
+use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::sync::Mutex;
+use tracing::{info, warn};
 
 pub struct UdpAudioStreamer {
     socket: UdpSocket,
     target_addr: Mutex<SocketAddr>,
     buffer: Mutex<Vec<u8>>,
+    tcp_stream: Mutex<Option<TcpStream>>,
 }
 
 impl UdpAudioStreamer {
     pub fn new(bind_addr: SocketAddr, target_addr: SocketAddr) -> Result<Self, std::io::Error> {
         let socket = UdpSocket::bind(bind_addr)?;
-        // Set non-blocking for real-time safety
         socket.set_nonblocking(true)?;
+
+        let tcp_stream = match TcpStream::connect_timeout(&target_addr, std::time::Duration::from_millis(200)) {
+            Ok(stream) => {
+                let _ = stream.set_nodelay(true);
+                let _ = stream.set_nonblocking(true);
+                info!("Connected direct TCP audio stream to {}", target_addr);
+                Some(stream)
+            }
+            Err(_) => None,
+        };
 
         Ok(Self {
             socket,
             target_addr: Mutex::new(target_addr),
-            buffer: Mutex::new(vec![0u8; 4096]),
+            buffer: Mutex::new(vec![0u8; 65536]),
+            tcp_stream: Mutex::new(tcp_stream),
         })
     }
 
@@ -73,20 +86,39 @@ impl AudioStreamerPort for UdpAudioStreamer {
             .lock()
             .map_err(|_| CoreError::StreamingError("Mutex poison".into()))?;
 
-        match self.socket.send_to(&buf_guard[..total_len], target) {
-            Ok(bytes) => {
-                if sequence_number == 1 || sequence_number % 500 == 0 {
-                    tracing::info!(
-                        "UDP Streamer: sent packet #{} ({} bytes) -> {}",
-                        sequence_number,
-                        bytes,
-                        target
-                    );
+        // 1. Send via UDP
+        let _ = self.socket.send_to(&buf_guard[..total_len], target);
+
+        // 2. Send via TCP if connected (for USB / ADB Reverse / reliable transport)
+        if let Ok(mut tcp_guard) = self.tcp_stream.lock() {
+            if tcp_guard.is_none() && (sequence_number % 50 == 0) {
+                // Periodically try connecting TCP in background
+                if let Ok(stream) = TcpStream::connect_timeout(&target, std::time::Duration::from_millis(50)) {
+                    let _ = stream.set_nodelay(true);
+                    let _ = stream.set_nonblocking(true);
+                    info!("Established TCP audio link with {}", target);
+                    *tcp_guard = Some(stream);
                 }
             }
-            Err(ref e) => {
-                tracing::warn!("UDP send_to error to {}: {:?}", target, e);
+
+            if let Some(ref mut stream) = *tcp_guard {
+                if let Err(e) = stream.write_all(&buf_guard[..total_len]) {
+                    if e.kind() != std::io::ErrorKind::WouldBlock {
+                        warn!("TCP audio stream disconnected: {:?}", e);
+                        *tcp_guard = None;
+                    }
+                }
             }
+        }
+
+        if sequence_number == 1 || sequence_number % 500 == 0 {
+            info!(
+                "Audio Streamer: dispatched packet #{} ({} samples, {} bytes) -> {}",
+                sequence_number,
+                buffer.frame_count(),
+                total_len,
+                target
+            );
         }
 
         Ok(())

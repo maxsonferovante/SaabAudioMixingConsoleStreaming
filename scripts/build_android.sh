@@ -67,6 +67,11 @@ if command -v adb &> /dev/null; then
                 echo "[INFO] Transferring libc++_shared.so to device..."
                 adb push "$LIBCXX_PATH" /data/local/tmp/libc++_shared.so
             fi
+            echo "[INFO] Configuring ADB port forwarding for zero-latency USB wire streaming..."
+            adb forward --remove-all 2>/dev/null || true
+            adb reverse --remove-all 2>/dev/null || true
+            adb forward tcp:48480 tcp:48480
+            adb forward tcp:9001 tcp:9001
             adb push "target/${TARGET_ARCH}/release/client" /data/local/tmp/client
             adb shell chmod +x /data/local/tmp/client
             echo "[INFO] Starting client binary on target device (P2 3.5mm routing)..."

@@ -2,9 +2,10 @@ use byteorder::{ByteOrder, LittleEndian};
 use protocol::{AudioPacketHeader, SampleFormat, HEADER_SIZE};
 use ringbuf::traits::Producer;
 use ringbuf::HeapProd;
-use std::net::{SocketAddr, UdpSocket};
+use std::io::Read;
+use std::net::{SocketAddr, TcpListener, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use tracing::{error, info, warn};
 
@@ -20,29 +21,35 @@ impl Default for UdpAudioReceiver {
 
 impl UdpAudioReceiver {
     pub fn new() -> Self {
-        Self { running: Arc::new(AtomicBool::new(false)) }
+        Self {
+            running: Arc::new(AtomicBool::new(false)),
+        }
     }
 
-    /// Starts the background UDP receiver thread, writing incoming samples directly to the lock-free producer
+    /// Starts background UDP and TCP audio receivers feeding the lock-free ring buffer
     pub fn start(
         &self,
         bind_addr: SocketAddr,
-        mut producer: HeapProd<f32>,
+        producer: HeapProd<f32>,
     ) -> Result<(), std::io::Error> {
-        let socket = UdpSocket::bind(bind_addr)?;
-        socket.set_read_timeout(Some(std::time::Duration::from_millis(100)))?;
-
         self.running.store(true, Ordering::SeqCst);
         let running_flag = Arc::clone(&self.running);
+        let shared_producer = Arc::new(Mutex::new(producer));
 
-        info!("UDP Audio Receiver listening on {}", bind_addr);
+        // 1. UDP Receiver Socket
+        let udp_socket = UdpSocket::bind(bind_addr)?;
+        udp_socket.set_read_timeout(Some(std::time::Duration::from_millis(100)))?;
+        info!("Audio Receiver (UDP) listening on {}", bind_addr);
+
+        let running_udp = Arc::clone(&running_flag);
+        let prod_udp = Arc::clone(&shared_producer);
 
         thread::spawn(move || {
-            let mut buf = [0u8; 4096];
+            let mut buf = [0u8; 65536];
             let mut packet_counter: u64 = 0;
 
-            while running_flag.load(Ordering::Relaxed) {
-                match socket.recv_from(&mut buf) {
+            while running_udp.load(Ordering::Relaxed) {
+                match udp_socket.recv_from(&mut buf) {
                     Ok((amt, _src)) => {
                         if amt < HEADER_SIZE {
                             continue;
@@ -60,16 +67,19 @@ impl UdpAudioReceiver {
                                 let expected_bytes = sample_count * 4;
 
                                 if payload.len() >= expected_bytes {
-                                    for i in 0..sample_count {
-                                        let sample =
-                                            LittleEndian::read_f32(&payload[i * 4..(i + 1) * 4]);
-                                        let _ = producer.try_push(sample);
+                                    if let Ok(mut prod) = prod_udp.lock() {
+                                        for i in 0..sample_count {
+                                            let sample = LittleEndian::read_f32(
+                                                &payload[i * 4..(i + 1) * 4],
+                                            );
+                                            let _ = prod.try_push(sample);
+                                        }
                                     }
 
                                     packet_counter += 1;
                                     if packet_counter == 1 || packet_counter % 500 == 0 {
                                         info!(
-                                            "UDP Receiver: received packet #{} ({} samples, {}Hz) -> P2 output",
+                                            "UDP Receiver: processed packet #{} ({} samples, {}Hz) -> P2 output",
                                             header.sequence_number, header.sample_count, header.sample_rate
                                         );
                                     }
@@ -84,7 +94,6 @@ impl UdpAudioReceiver {
                         if e.kind() == std::io::ErrorKind::WouldBlock
                             || e.kind() == std::io::ErrorKind::TimedOut =>
                     {
-                        // Timeout allows checking running_flag
                         continue;
                     }
                     Err(e) => {
@@ -96,6 +105,102 @@ impl UdpAudioReceiver {
 
             info!("UDP Audio Receiver thread terminated");
         });
+
+        // 2. TCP Receiver Socket (for direct USB / ADB Reverse tethering)
+        let tcp_listener = match TcpListener::bind(bind_addr) {
+            Ok(l) => {
+                let _ = l.set_nonblocking(true);
+                info!("Audio Receiver (TCP / ADB Reverse) listening on {}", bind_addr);
+                Some(l)
+            }
+            Err(e) => {
+                warn!("TCP listener could not bind to {}: {:?}", bind_addr, e);
+                None
+            }
+        };
+
+        if let Some(listener) = tcp_listener {
+            let running_tcp = Arc::clone(&running_flag);
+            let prod_tcp = Arc::clone(&shared_producer);
+
+            thread::spawn(move || {
+                let mut header_buf = [0u8; HEADER_SIZE];
+                let mut payload_buf = vec![0u8; 65536];
+                let mut packet_counter: u64 = 0;
+
+                while running_tcp.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((mut stream, peer_addr)) => {
+                            info!("TCP Audio Streamer connected from {}", peer_addr);
+                            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(100)));
+                            let _ = stream.set_nodelay(true);
+
+                            while running_tcp.load(Ordering::Relaxed) {
+                                if let Err(e) = stream.read_exact(&mut header_buf) {
+                                    if e.kind() == std::io::ErrorKind::WouldBlock
+                                        || e.kind() == std::io::ErrorKind::TimedOut
+                                    {
+                                        continue;
+                                    }
+                                    info!("TCP Audio Streamer disconnected: {:?}", e);
+                                    break;
+                                }
+
+                                match AudioPacketHeader::read_from_slice(&header_buf) {
+                                    Ok((header, _)) => {
+                                        let sample_count = (header.sample_count as usize)
+                                            * (header.channels as usize);
+                                        let payload_bytes = sample_count * 4;
+
+                                        if payload_buf.len() < payload_bytes {
+                                            payload_buf.resize(payload_bytes, 0);
+                                        }
+
+                                        if let Err(e) = stream.read_exact(&mut payload_buf[..payload_bytes]) {
+                                            warn!("TCP payload read error: {:?}", e);
+                                            break;
+                                        }
+
+                                        if let Ok(mut prod) = prod_tcp.lock() {
+                                            for i in 0..sample_count {
+                                                let sample = LittleEndian::read_f32(
+                                                    &payload_buf[i * 4..(i + 1) * 4],
+                                                );
+                                                let _ = prod.try_push(sample);
+                                            }
+                                        }
+
+                                        packet_counter += 1;
+                                        if packet_counter == 1 || packet_counter % 500 == 0 {
+                                            info!(
+                                                "TCP/USB Receiver: processed packet #{} ({} samples, {}Hz) -> P2 output",
+                                                header.sequence_number, header.sample_count, header.sample_rate
+                                            );
+                                        }
+                                    }
+                                    Err(e) => {
+                                        warn!("Invalid TCP audio header: {:?}", e);
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        Err(ref e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                || e.kind() == std::io::ErrorKind::TimedOut =>
+                        {
+                            thread::sleep(std::time::Duration::from_millis(50));
+                        }
+                        Err(e) => {
+                            error!("TCP accept error: {:?}", e);
+                            break;
+                        }
+                    }
+                }
+
+                info!("TCP Audio Receiver thread terminated");
+            });
+        }
 
         Ok(())
     }
