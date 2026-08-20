@@ -26,7 +26,21 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| "127.0.0.1:48480".to_string());
 
     let udp_bind_addr: SocketAddr = "0.0.0.0:0".parse()?;
-    let udp_target_addr: SocketAddr = target_ip.parse()?;
+    let udp_target_addr: SocketAddr = match target_ip.parse() {
+        Ok(addr) => addr,
+        Err(_) => {
+            let parts: Vec<&str> = target_ip.split(':').collect();
+            if parts.len() >= 3 {
+                let host = parts[0];
+                let port = parts.last().unwrap_or(&"48480");
+                format!("{}:{}", host, port)
+                    .parse()
+                    .unwrap_or_else(|_| "127.0.0.1:48480".parse().unwrap())
+            } else {
+                "127.0.0.1:48480".parse().unwrap()
+            }
+        }
+    };
     let ws_bind_addr: SocketAddr = "0.0.0.0:9001".parse()?;
 
     info!("Streaming UDP audio to target: {}", udp_target_addr);

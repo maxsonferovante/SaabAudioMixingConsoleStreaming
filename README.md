@@ -93,10 +93,12 @@ The acronym **"ch"** stands for independent **Audio Channels**. All variants ope
 ```
 SaabAudioMixingConsoleStreaming/
 ├── crates/
+│   ├── cli/             # Unified saab CLI binary and service management supervisor
 │   ├── protocol/        # Binary UDP packet header and WebSocket JSON DTOs
-│   ├── core/            # Domain entities, DSP value types, and Ports
+│   ├── core/            # Domain entities, DSP value types, and Ports (Hexagonal Architecture)
 │   ├── server/          # macOS backend: CoreAudio BlackHole capture, UDP streamer, WebSocket server
-│   └── client/          # Client frontend: Iced UI, UDP receiver, CPAL & Oboe playback
+│   └── client/          # Client frontend: Iced UI, UDP receiver, CPAL & Oboe AAudio playback
+├── Formula/             # Homebrew distribution formula (saab.rb)
 ├── scripts/
 │   └── build_android.sh # Cargo-NDK build and ADB deployment script for Android 12+
 ├── specs/               # Product Requirements and Architecture Specifications
@@ -163,6 +165,52 @@ saab logs --device-android
 
 # 6. Stop all background services cleanly
 saab stop
+```
+
+---
+
+### Local Testing & End-to-End Verification
+
+Before submitting pull requests or deploying new releases, validate the entire codebase locally:
+
+#### 1. Code Quality, Formatting & Test Suite
+```bash
+# 1. Verify strict formatting
+cargo fmt --check
+
+# 2. Run Clippy linter across all workspace crates
+cargo clippy --workspace -- -D warnings
+
+# 3. Run all unit and integration test suites (29 tests)
+cargo test --workspace
+```
+
+#### 2. Building Multi-Target Release Binaries
+```bash
+# Compile macOS binaries (CLI and Server)
+cargo build --release --bin saab --bin server
+
+# Compile Android AAudio Receiver binary
+cargo ndk -t arm64-v8a -P 31 -- build --package client --release
+```
+
+#### 3. End-to-End Service Lifecycle Verification
+```bash
+# 1. Cleanly stop any existing background daemons
+cargo run --bin saab -- stop
+
+# 2. Start services (spawns macOS capture engine & pushes Android receiver via ADB)
+cargo run --bin saab -- start
+
+# 3. Inspect real-time telemetry and PID status
+cargo run --bin saab -- status
+
+# 4. Stream real-time logs to verify packet transmission
+cargo run --bin saab -- logs --server-mac
+cargo run --bin saab -- logs --device-android
+
+# 5. Launch Studio Touch Console (Iced GUI)
+cargo run --bin saab -- studio
 ```
 
 ---
@@ -340,23 +388,6 @@ The Android client runs on Android 12+ (`aarch64-linux-android`) using Google Ob
    ```bash
    cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
    ```
-
----
-
-## Testing and Verification
-
-Run the test suite across the entire workspace:
-
-```bash
-# Execute unit and integration tests
-cargo test --workspace
-
-# Execute Clippy with strict checks
-cargo clippy --workspace -- -D warnings
-
-# Verify formatting
-cargo fmt --check
-```
 
 ---
 

@@ -60,17 +60,22 @@ jobs:
           ndk-version: r27c
           link-to-sdk: true
 
-      - name: Build Android Client Binary
+      - name: Build Android Client Binary & Runtime
         run: |
           cargo ndk -t arm64-v8a -P 31 -- build --package client --release
           mkdir -p dist
           cp target/aarch64-linux-android/release/client dist/client-aarch64-linux-android
+          # Locate and package official NDK libc++_shared.so for Android ARM64
+          LIBCXX=$(find "$ANDROID_NDK_HOME" -name "libc++_shared.so" | grep "aarch64" | head -n 1)
+          if [ -n "$LIBCXX" ]; then
+            cp "$LIBCXX" dist/libc++_shared.so
+          fi
 
       - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-artifact
-          path: dist/client-aarch64-linux-android
+          path: dist/
 
   build-macos:
     name: Build macOS Packages (ARM64 & x86_64)
