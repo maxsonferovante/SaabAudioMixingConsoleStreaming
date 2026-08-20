@@ -167,6 +167,52 @@ saab stop
 
 ---
 
+### Local Testing & End-to-End Verification
+
+Before submitting pull requests or deploying new releases, validate the entire codebase locally:
+
+#### 1. Code Quality, Formatting & Test Suite
+```bash
+# 1. Verify strict formatting
+cargo fmt --check
+
+# 2. Run Clippy linter across all workspace crates
+cargo clippy --workspace -- -D warnings
+
+# 3. Run all unit and integration test suites (29 tests)
+cargo test --workspace
+```
+
+#### 2. Building Multi-Target Release Binaries
+```bash
+# Compile macOS binaries (CLI and Server)
+cargo build --release --bin saab --bin server
+
+# Compile Android AAudio Receiver binary
+cargo ndk -t arm64-v8a -P 31 -- build --package client --release
+```
+
+#### 3. End-to-End Service Lifecycle Verification
+```bash
+# 1. Cleanly stop any existing background daemons
+cargo run --bin saab -- stop
+
+# 2. Start services (spawns macOS capture engine & pushes Android receiver via ADB)
+cargo run --bin saab -- start
+
+# 3. Inspect real-time telemetry and PID status
+cargo run --bin saab -- status
+
+# 4. Stream real-time logs to verify packet transmission
+cargo run --bin saab -- logs --server-mac
+cargo run --bin saab -- logs --device-android
+
+# 5. Launch Studio Touch Console (Iced GUI)
+cargo run --bin saab -- studio
+```
+
+---
+
 ### Manual Execution (Development Mode)
 
 If you prefer to run services manually in dedicated terminal windows during development:
