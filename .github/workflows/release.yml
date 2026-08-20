@@ -132,9 +132,10 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
 
-      - name: Generate Formula & Checksums
+      - name: Generate Formula, Checksums & Update Repository
         run: |
           VERSION="${{ needs.check-version.outputs.version }}"
+          REPO="${{ github.repository }}"
           cd release-assets
           
           ARM64_TAR="saab-v${VERSION}-macos-arm64.tar.gz"
@@ -147,15 +148,15 @@ jobs:
           cat << EOF > saab.rb
           class Saab < Formula
             desc "Ultra-low-latency distributed audio mixing console CLI for macOS and Android"
-            homepage "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming"
+            homepage "https://github.com/${REPO}"
             version "${VERSION}"
             license "MIT"
 
             if Hardware::CPU.arm?
-              url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v${VERSION}/${ARM64_TAR}"
+              url "https://github.com/${REPO}/releases/download/v${VERSION}/${ARM64_TAR}"
               sha256 "${ARM64_SHA}"
             else
-              url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v${VERSION}/${X86_64_TAR}"
+              url "https://github.com/${REPO}/releases/download/v${VERSION}/${X86_64_TAR}"
               sha256 "${X86_64_SHA}"
             end
 
@@ -178,6 +179,13 @@ jobs:
           end
           EOF
           cd ..
+
+          # Update Formula/saab.rb in repository and commit back to main
+          mkdir -p Formula
+          cp release-assets/saab.rb Formula/saab.rb
+          git add Formula/saab.rb
+          git commit -m "chore(formula): update Formula/saab.rb for v${VERSION} release [skip ci]" || true
+          git push origin main || true
 
       - name: Generate Release Notes
         run: |
