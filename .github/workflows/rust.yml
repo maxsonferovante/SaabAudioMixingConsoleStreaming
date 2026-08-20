@@ -65,9 +65,82 @@ jobs:
             echo "tag_name=${TAG_NAME}" >> $GITHUB_OUTPUT
           fi
 
-  release:
-    name: Create GitHub Release
+  build-android:
+    name: Build Android aarch64 Binary
     needs: [test, check-version]
+    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: Setup Android NDK
+        uses: nsubiron/setup-ndk@v2
+        with:
+          ndk-version: r27c
+
+      - name: Build Android Client Binary
+        run: |
+          cargo ndk -t arm64-v8a -P 31 -- build --package client --release
+          mkdir -p artifacts
+          cp target/aarch64-linux-android/release/client artifacts/client-aarch64-linux-android
+
+      - name: Upload Android Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-client-binary
+          path: artifacts/client-aarch64-linux-android
+
+  build-macos:
+    name: Build macOS Universal / ARM64 / x86_64 Binaries
+    needs: [test, check-version]
+    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+
+      - name: Build macOS Release Binaries
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          mkdir -p dist
+
+          # 1. Build ARM64 (Apple Silicon)
+          cargo build --release --target aarch64-apple-darwin --bin saab --bin server
+          mkdir -p package-arm64
+          cp target/aarch64-apple-darwin/release/saab package-arm64/
+          cp target/aarch64-apple-darwin/release/server package-arm64/
+          tar -czvf "dist/saab-v${VERSION}-macos-arm64.tar.gz" -C package-arm64 saab server
+
+          # 2. Build x86_64 (Intel)
+          cargo build --release --target x86_64-apple-darwin --bin saab --bin server
+          mkdir -p package-x86_64
+          cp target/x86_64-apple-darwin/release/saab package-x86_64/
+          cp target/x86_64-apple-darwin/release/server package-x86_64/
+          tar -czvf "dist/saab-v${VERSION}-macos-x86_64.tar.gz" -C package-x86_64 saab server
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-dist-artifacts
+          path: dist/
+
+  release:
+    name: Create GitHub Release & Homebrew Formula
+    needs: [test, check-version, build-android, build-macos]
     if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
@@ -78,6 +151,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-client-binary
+          path: release-assets/
+
+      - name: Download macOS Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-dist-artifacts
+          path: release-assets/
+
       - name: Create Git Tag & Push
         run: |
           TAG_NAME="${{ needs.check-version.outputs.tag_name }}"
@@ -86,9 +171,53 @@ jobs:
           git tag "$TAG_NAME"
           git push origin "$TAG_NAME"
 
-      - name: Generate Release Notes with Contributors
+      - name: Compute Checksums & Generate Homebrew Formula
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          cd release-assets
+          
+          ARM64_TAR="saab-v${VERSION}-macos-arm64.tar.gz"
+          X86_64_TAR="saab-v${VERSION}-macos-x86_64.tar.gz"
+
+          ARM64_SHA=$(sha256sum "$ARM64_TAR" | awk '{print $1}')
+          X86_64_SHA=$(sha256sum "$X86_64_TAR" | awk '{print $1}')
+          ANDROID_SHA=$(sha256sum "client-aarch64-linux-android" | awk '{print $1}')
+
+          sha256sum * > checksums.txt
+
+          cat << EOF > saab.rb
+          class Saab < Formula
+            desc "Ultra-low-latency distributed audio mixing console CLI for macOS and Android"
+            homepage "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming"
+            version "${VERSION}"
+            license "MIT"
+
+            if Hardware::CPU.arm?
+              url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v${VERSION}/${ARM64_TAR}"
+              sha256 "${ARM64_SHA}"
+            else
+              url "https://github.com/maxsonferovante/SaabAudioMixingConsoleStreaming/releases/download/v${VERSION}/${X86_64_TAR}"
+              sha256 "${X86_64_SHA}"
+            end
+
+            depends_on "blackhole-16ch"
+
+            def install
+              bin.install "saab"
+              bin.install "server" if File.exist?("server")
+            end
+
+            test do
+              assert_match "saab #{version}", shell_output("#{bin}/saab --version")
+            end
+          end
+          EOF
+          cd ..
+
+      - name: Generate Release Notes
         run: |
           TAG_NAME="${{ needs.check-version.outputs.tag_name }}"
+          VERSION="${{ needs.check-version.outputs.version }}"
           PREV_TAG=$(git describe --tags --abbrev=0 "${TAG_NAME}^" 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
             CONTRIBUTORS=$(git log "${PREV_TAG}..${TAG_NAME}" --format="* %an" | grep -v '\[bot\]' | sort -u)
@@ -97,10 +226,22 @@ jobs:
           fi
 
           {
+            echo "# Release ${TAG_NAME}"
+            echo ""
+            echo "## Homebrew Installation"
+            echo "\`\`\`bash"
+            echo "brew install maxsonferovante/saab/saab"
+            echo "\`\`\`"
+            echo ""
+            echo "## Release Assets"
+            echo "- \`saab-v${VERSION}-macos-arm64.tar.gz\` (macOS Apple Silicon M1/M2/M3/M4)"
+            echo "- \`saab-v${VERSION}-macos-x86_64.tar.gz\` (macOS Intel)"
+            echo "- \`client-aarch64-linux-android\` (Android 12+ Oboe AAudio Daemon)"
+            echo "- \`saab.rb\` (Homebrew Formula)"
+            echo "- \`checksums.txt\` (SHA256 digests)"
+            echo ""
             echo "## Contributors in this Release"
-            echo ""
             echo "$CONTRIBUTORS"
-            echo ""
           } > RELEASE_BODY.md
 
       - name: Create GitHub Release
@@ -109,4 +250,10 @@ jobs:
         with:
           tag_name: ${{ needs.check-version.outputs.tag_name }}
           body_path: RELEASE_BODY.md
+          files: |
+            release-assets/client-aarch64-linux-android
+            release-assets/saab-v${{ needs.check-version.outputs.version }}-macos-arm64.tar.gz
+            release-assets/saab-v${{ needs.check-version.outputs.version }}-macos-x86_64.tar.gz
+            release-assets/saab.rb
+            release-assets/checksums.txt
           generate_release_notes: true
