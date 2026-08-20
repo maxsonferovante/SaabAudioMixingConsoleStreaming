@@ -166,6 +166,10 @@ If the server logs indicate packets are being transmitted but reports silence:
 
 The **Dedicated Studio Touch Console** is the professional graphical control interface of the system, built with the `iced` GUI framework in pure Rust. It operates as a physical digital studio mixer with a sleek *Studio Dark* aesthetic.
 
+<p align="center">
+  <img src="assets/saab_audio_console.png" alt="Saab Audio Mixing Console UI" width="280" />
+</p>
+
 ### 1. Console Features and Subsystems
 
 - **Tactile Logarithmic Fader**: Smooth volume control scaling from $-\infty\text{ dB}$, $-60\text{ dB}$ up to $+6\text{ dB}$ with a frame-accurate 5ms linear gain ramp (*anti-pop* interpolation) to eliminate audio clicks and transient artifacts.
