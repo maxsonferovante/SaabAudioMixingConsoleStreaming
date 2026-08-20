@@ -4,11 +4,11 @@ Uma interface de usuário de console de mixagem profissional e moderna construí
 
 ## Acceptance criteria
 
-- [ ] Componente visual de Fader vertical personalizado com suporte a arraste tátil e teclado, exibindo escala de decibéis (-inf, -60dB a +6dB).
-- [ ] Componente visual de VU Meter estéreo duplo com renderização a 60fps, barras em gradiente de cor e indicador de saturação em vermelho.
-- [ ] Botões tácteis com iluminação ativa para Mute (vermelho) e Dim (âmbar).
-- [ ] Painel superior de telemetria mostrando status de conexão (Conectado / Reconectando), IP do Mac e latência estimada em milissegundos.
-- [ ] Suporte a execução em modo Desktop (macOS) e preparação da visualização responsiva para telas verticais de smartphones.
+- [x] Componente visual de Fader vertical personalizado com suporte a arraste tátil e teclado, exibindo escala de decibéis (-inf, -60dB a +6dB).
+- [x] Componente visual de VU Meter estéreo duplo com renderização a 60fps, barras em gradiente de cor e indicador de saturação em vermelho.
+- [x] Botões tácteis com iluminação ativa para Mute (vermelho) e Dim (âmbar).
+- [x] Painel superior de telemetria mostrando status de conexão (Conectado / Reconectando), IP do Mac e latência estimada em milissegundos.
+- [x] Suporte a execução em modo Desktop (macOS) e preparação da visualização responsiva para telas verticais de smartphones.
 
 ## Blocked by
 

@@ -5,6 +5,7 @@ use tokio_tungstenite::connect_async;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{error, info, warn};
 
+#[derive(Debug, Clone)]
 pub struct WebSocketClient {
     command_tx: mpsc::Sender<ControlCommandDto>,
 }

@@ -1,21 +1,21 @@
 use anyhow::Result;
-use client::adapters::{CpalAudioPlayback, UdpAudioReceiver, WebSocketClient};
-use protocol::ControlCommandDto;
+use client::adapters::{CpalAudioPlayback, UdpAudioReceiver};
+use client::ui::{ConsoleApp, ConsoleFlags};
+use iced::{window, Application, Settings};
 use ringbuf::traits::Split;
 use ringbuf::HeapRb;
 use std::net::SocketAddr;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
-#[tokio::main]
-async fn main() -> Result<()> {
+fn main() -> Result<()> {
     let subscriber = FmtSubscriber::builder().with_max_level(Level::INFO).finish();
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting AudioMixingConsole Client Console...");
+    info!("Starting AudioMixingConsole Studio Client...");
 
     let udp_bind_addr: SocketAddr = "127.0.0.1:48480".parse()?;
-    let ws_url = "ws://127.0.0.1:9001";
+    let ws_url = "ws://127.0.0.1:9001".to_string();
 
     // 48000 samples buffer = 1 second of stereo audio
     let ring_buffer = HeapRb::<f32>::new(48000 * 2);
@@ -28,26 +28,21 @@ async fn main() -> Result<()> {
     // Start CPAL local playback (if audio output is available)
     match CpalAudioPlayback::start(consumer) {
         Ok(_playback) => info!("Audio playback engine initialized on default device"),
-        Err(e) => tracing::warn!("Could not start hardware playback (simulation mode): {:?}", e),
+        Err(e) => tracing::warn!("Hardware playback unavailable (simulation mode): {:?}", e),
     }
 
-    // Connect to WebSocket server
-    info!("Connecting to WebSocket server at {}...", ws_url);
-    match WebSocketClient::connect(ws_url, |telemetry| {
-        info!("Telemetry received: {:?}", telemetry);
-    })
-    .await
-    {
-        Ok(ws_client) => {
-            info!("WebSocket connected. Sending initial volume calibration...");
-            let _ = ws_client.send_command(ControlCommandDto::SetMasterVolume { db: 0.0 }).await;
-        }
-        Err(e) => tracing::warn!("WebSocket server not yet available: {:?}", e),
-    }
+    let settings = Settings {
+        flags: ConsoleFlags { server_ws_url: ws_url },
+        window: window::Settings {
+            size: iced::Size::new(420.0, 680.0),
+            resizable: true,
+            decorations: true,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
 
-    info!("Client console running. Waiting for audio packets...");
-    tokio::signal::ctrl_c().await?;
-    info!("Exiting AudioMixingConsole Client.");
+    ConsoleApp::run(settings)?;
 
     Ok(())
 }
