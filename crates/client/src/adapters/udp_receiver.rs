@@ -160,7 +160,9 @@ impl UdpAudioReceiver {
                                             if e.kind() == std::io::ErrorKind::WouldBlock
                                                 || e.kind() == std::io::ErrorKind::TimedOut
                                             {
-                                                std::thread::sleep(std::time::Duration::from_millis(1));
+                                                std::thread::sleep(
+                                                    std::time::Duration::from_millis(1),
+                                                );
                                                 continue;
                                             }
                                             warn!("TCP payload read error: {:?}", e);

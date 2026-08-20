@@ -123,15 +123,42 @@ SaabAudioMixingConsoleStreaming/
 
 ### Running the Server (macOS)
 
-1. Set your macOS audio output to **BlackHole 16ch** in **System Settings -> Sound -> Output**.
+1. Set your macOS audio output to **BlackHole 16ch** or **BlackHole 2ch** in **System Settings -> Sound -> Output**.
 2. Execute the server binary on macOS, pointing to the Android device IP:
 
 ```bash
 cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
 ```
 
-- **Audio Capture**: Automatically auto-discovers and binds to **BlackHole 16ch** (or available variant).
+- **Audio Capture**: Automatically synchronizes and binds to the active macOS sound output driver (**BlackHole 2ch** or **BlackHole 16ch**).
 - **WebSocket Control Server**: Listening on `ws://0.0.0.0:9001`.
+
+---
+
+### Common Issues and Troubleshooting
+
+#### 1. Zero Audio / Complete Silence (`SILENCE - check macOS Output`)
+
+If the server logs indicate packets are being transmitted but reports silence:
+
+- **macOS Microphone / Audio Input Permission**:
+  On macOS (Sonoma, Sequoia, and later), any terminal emulator or IDE capturing CoreAudio input streams (including virtual loopback drivers like BlackHole) requires explicit **Microphone permission**. When this permission is absent, macOS CoreAudio does not throw an error; instead, it intentionally replaces all captured samples with zeros (`0.000000`) for privacy reasons.
+
+  **Resolution**:
+  1. Open **System Settings -> Privacy & Security -> Microphone** (*Ajustes do Sistema -> Privacidade e Segurança -> Microfone*).
+  2. Locate your **Terminal** (or **iTerm**, **Cursor**, **VSCode**) in the list and enable the toggle.
+  3. If already enabled, toggle it OFF and ON again to reload the CoreAudio security token.
+
+- **Browser and Application Output Binding (Chrome, Spotify)**:
+  Chromium-based browsers (Chrome, Brave, Edge) and media players maintain open audio stream handles to the previous default output device until refreshed.
+  - **YouTube / Web Browser**: Reload the tab (`Cmd + R` or `F5`) to re-bind audio context to BlackHole.
+  - **Spotify**: Pause and unpause playback, or restart the Spotify application.
+
+- **Driver Reload Without Rebooting**:
+  If BlackHole was installed via Homebrew and does not immediately appear in the CoreAudio device list, restart the CoreAudio daemon:
+  ```bash
+  sudo killall coreaudiod
+  ```
 
 ---
 
