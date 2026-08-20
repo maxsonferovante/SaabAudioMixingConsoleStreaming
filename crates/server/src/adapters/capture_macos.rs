@@ -77,12 +77,16 @@ impl MacAudioCapture {
             return Ok(dev.clone());
         }
 
-        // Priority 5: Generic BlackHole or Loopback
+        // Priority 5: Generic BlackHole, Loopback, Perssua, or Multi-Output
         if let Some(dev) = input_devices.iter().find(|d| {
             d.name()
                 .map(|n| {
                     let l = n.to_lowercase();
-                    l.contains("blackhole") || l.contains("loopback") || l.contains("multi-output")
+                    l.contains("blackhole")
+                        || l.contains("perssua")
+                        || l.contains("loopback")
+                        || l.contains("soundflower")
+                        || l.contains("multi-output")
                 })
                 .unwrap_or(false)
         }) {
