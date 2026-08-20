@@ -8,11 +8,11 @@ Implement the automated asset fetcher and deployment subsystem. When `saab start
 
 ## Acceptance criteria
 
-- [ ] Downloader checks local workspace target build first before reaching out to GitHub.
-- [ ] If local binary is absent, queries GitHub Releases API and downloads the precompiled `aarch64-linux-android` client binary into `~/.cache/saab/bin/client`.
-- [ ] Automatically pushes the client binary and `libc++_shared.so` to `/data/local/tmp/` via ADB.
-- [ ] Sets executable permissions (`chmod +x /data/local/tmp/client`).
-- [ ] Users on macOS without Android NDK can start the Android receiver with a single command.
+- [x] Downloader checks local workspace target build first before reaching out to GitHub.
+- [x] If local binary is absent, queries GitHub Releases API and downloads the precompiled `aarch64-linux-android` client binary into `~/.cache/saab/bin/client`.
+- [x] Automatically pushes the client binary and `libc++_shared.so` to `/data/local/tmp/` via ADB.
+- [x] Sets executable permissions (`chmod +x /data/local/tmp/client`).
+- [x] Users on macOS without Android NDK can start the Android receiver with a single command.
 
 ## Blocked by
 

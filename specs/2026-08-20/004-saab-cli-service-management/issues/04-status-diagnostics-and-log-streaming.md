@@ -8,11 +8,11 @@ Implement real-time status diagnostics (`saab status`) and live log streaming (`
 
 ## Acceptance criteria
 
-- [ ] `saab status` reports PID, uptime, status (RUNNING/STOPPED), target IP, sample rate, and driver name for both macOS server and Android node.
-- [ ] `saab logs --server-mac` streams server log lines in real time to the terminal.
-- [ ] `saab logs --device-android` streams Android client logs via ADB in real time.
-- [ ] If no flags are provided, `saab logs` displays helpful usage info or defaults to server logs.
-- [ ] Output formatting is clean, structured, and strictly without emojis.
+- [x] `saab status` reports PID, uptime, status (RUNNING/STOPPED), target IP, sample rate, and driver name for both macOS server and Android node.
+- [x] `saab logs --server-mac` streams server log lines in real time to the terminal.
+- [x] `saab logs --device-android` streams Android client logs via ADB in real time.
+- [x] If no flags are provided, `saab logs` displays helpful usage info or defaults to server logs.
+- [x] Output formatting is clean, structured, and strictly without emojis.
 
 ## Blocked by
 

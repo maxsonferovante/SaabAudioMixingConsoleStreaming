@@ -8,11 +8,11 @@ Implement the primary CLI crate (`crates/cli`) producing the standalone `saab` b
 
 ## Acceptance criteria
 
-- [ ] Crate `crates/cli` is registered in root `Cargo.toml` workspace members and builds binary `saab`.
-- [ ] Running `saab --help` outputs all standard subcommands: `configure`, `start`, `stop`, `status`, `logs`, `studio`.
-- [ ] `saab configure` probes available audio input devices using `cpal` and detects ADB devices via `adb devices`.
-- [ ] Configuration is written in valid JSON format to `~/.config/saab/config.json` with sane defaults for missing fields.
-- [ ] Unit tests validate configuration serialization/deserialization and CLI argument parsing with zero warnings.
+- [x] Crate `crates/cli` is registered in root `Cargo.toml` workspace members and builds binary `saab`.
+- [x] Running `saab --help` outputs all standard subcommands: `configure`, `start`, `stop`, `status`, `logs`, `studio`.
+- [x] `saab configure` probes available audio input devices using `cpal` and detects ADB devices via `adb devices`.
+- [x] Configuration is written in valid JSON format to `~/.config/saab/config.json` with sane defaults for missing fields.
+- [x] Unit tests validate configuration serialization/deserialization and CLI argument parsing with zero warnings.
 
 ## Blocked by
 

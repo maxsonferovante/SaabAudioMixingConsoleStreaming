@@ -8,11 +8,11 @@ Implement the `saab studio` subcomponent to launch the Dedicated Studio Touch Co
 
 ## Acceptance criteria
 
-- [ ] `saab studio` launches the Iced GUI ConsoleApp in foreground or detached window without needing `cargo run --bin client`.
-- [ ] The studio touch console connects cleanly to the background server WebSocket on `ws://127.0.0.1:9001` and displays `[ONLINE]`.
-- [ ] End-to-end integration tests pass on the entire workspace with zero failures (`cargo test --workspace`).
-- [ ] Strict clippy linter passes with zero warnings (`cargo clippy --workspace -- -D warnings`).
-- [ ] Documentation for Homebrew installation and single-command workflow is updated in `README.md`.
+- [x] `saab studio` launches the Iced GUI ConsoleApp in foreground or detached window without needing `cargo run --bin client`.
+- [x] The studio touch console connects cleanly to the background server WebSocket on `ws://127.0.0.1:9001` and displays `[ONLINE]`.
+- [x] End-to-end integration tests pass on the entire workspace with zero failures (`cargo test --workspace`).
+- [x] Strict clippy linter passes with zero warnings (`cargo clippy --workspace -- -D warnings`).
+- [x] Documentation for Homebrew installation and single-command workflow is updated in `README.md`.
 
 ## Blocked by
 

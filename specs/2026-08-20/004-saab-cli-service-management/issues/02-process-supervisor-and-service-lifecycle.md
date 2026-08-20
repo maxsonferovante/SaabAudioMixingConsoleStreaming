@@ -8,11 +8,11 @@ Implement the service lifecycle and process supervisor engine for `saab start` a
 
 ## Acceptance criteria
 
-- [ ] `saab start` launches macOS server as a detached background daemon and writes PID to `~/.config/saab/pids/server.pid`.
-- [ ] `saab start` executes ADB port forward and reverse commands automatically.
-- [ ] `saab start` detects running instances by process name, logs a restart notification, and gracefully recycles the processes without hanging.
-- [ ] `saab stop` terminates both macOS server and Android receiver processes cleanly.
-- [ ] Standard output and standard error from server are appended to `~/.config/saab/logs/server.log`.
+- [x] `saab start` launches macOS server as a detached background daemon and writes PID to `~/.config/saab/pids/server.pid`.
+- [x] `saab start` executes ADB port forward and reverse commands automatically.
+- [x] `saab start` detects running instances by process name, logs a restart notification, and gracefully recycles the processes without hanging.
+- [x] `saab stop` terminates both macOS server and Android receiver processes cleanly.
+- [x] Standard output and standard error from server are appended to `~/.config/saab/logs/server.log`.
 
 ## Blocked by
 
