@@ -93,10 +93,12 @@ The acronym **"ch"** stands for independent **Audio Channels**. All variants ope
 ```
 SaabAudioMixingConsoleStreaming/
 ├── crates/
+│   ├── cli/             # Unified saab CLI binary and service management supervisor
 │   ├── protocol/        # Binary UDP packet header and WebSocket JSON DTOs
-│   ├── core/            # Domain entities, DSP value types, and Ports
+│   ├── core/            # Domain entities, DSP value types, and Ports (Hexagonal Architecture)
 │   ├── server/          # macOS backend: CoreAudio BlackHole capture, UDP streamer, WebSocket server
-│   └── client/          # Client frontend: Iced UI, UDP receiver, CPAL & Oboe playback
+│   └── client/          # Client frontend: Iced UI, UDP receiver, CPAL & Oboe AAudio playback
+├── Formula/             # Homebrew distribution formula (saab.rb)
 ├── scripts/
 │   └── build_android.sh # Cargo-NDK build and ADB deployment script for Android 12+
 ├── specs/               # Product Requirements and Architecture Specifications
@@ -386,23 +388,6 @@ The Android client runs on Android 12+ (`aarch64-linux-android`) using Google Ob
    ```bash
    cargo run --bin server -- <ANDROID_DEVICE_IP>:48480
    ```
-
----
-
-## Testing and Verification
-
-Run the test suite across the entire workspace:
-
-```bash
-# Execute unit and integration tests
-cargo test --workspace
-
-# Execute Clippy with strict checks
-cargo clippy --workspace -- -D warnings
-
-# Verify formatting
-cargo fmt --check
-```
 
 ---
 
