@@ -37,8 +37,7 @@ jobs:
               --base develop \
               --head "$BRANCH_NAME" \
               --title "feat: Merge $BRANCH_NAME into develop" \
-              --body "$PR_BODY" \
-              --assignee "maxsonferovante" || true
+              --body "$PR_BODY" || true
           fi
 
   create-pr-develop-to-main:
@@ -75,6 +74,5 @@ jobs:
               --base main \
               --head develop \
               --title "release: Merge develop into main" \
-              --body "$RELEASE_BODY" \
-              --assignee "maxsonferovante" || true
+              --body "$RELEASE_BODY" || true
           fi
