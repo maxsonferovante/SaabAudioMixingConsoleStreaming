@@ -83,7 +83,6 @@ impl MacAudioCapture {
                 .map(|n| {
                     let l = n.to_lowercase();
                     l.contains("blackhole")
-                        || l.contains("perssua")
                         || l.contains("loopback")
                         || l.contains("soundflower")
                         || l.contains("multi-output")
