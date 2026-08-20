@@ -67,6 +67,14 @@ The codebase enforces a strict inside-out dependency rule: Domain Core has zero 
    └──────────────────────────────────────────────────────┘
 ```
 
+### Native macOS System Audio Capture (ScreenCaptureKit)
+
+- **Option 1: Native Driverless Capture via Apple ScreenCaptureKit (`SCStream`)**:
+  - Interfaces directly with Apple's `ScreenCaptureKit` (`SCStream` with `capturesAudio = true`) on macOS 13+.
+  - Captures bit-exact system-wide digital audio (Spotify, browsers, games, media) in 48kHz stereo float32 PCM without requiring third-party virtual audio drivers (such as BlackHole or Perssua).
+  - Requires *Screen & System Audio Recording* permission in macOS *System Settings -> Privacy & Security*.
+  - Provides seamless, transparent fallback to `cpal` hardware/virtual audio input if recording permissions are pending or if an explicit audio device is passed via CLI.
+
 ### Domain Model & Invariants
 - **Volume Representation**: Encoded as immutable `DecibelVolume` (-80.0 dB to +6.0 dB, with -80.0 dB representing $-\infty$) mapped to `LinearGain` via $g = 10^{\frac{\text{dB}}{20}}$.
 - **Anti-Pop Smoothing**: Gain changes transition across a 5ms linear interpolation window (240 samples at 48kHz) to eliminate DC offset clicks.
