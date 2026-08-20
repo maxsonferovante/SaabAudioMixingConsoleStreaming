@@ -2,9 +2,9 @@ name: Rust CI & Release
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "develop" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "develop" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -68,7 +68,7 @@ jobs:
   release:
     name: Create GitHub Release
     needs: [test, check-version]
-    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push'
+    if: needs.check-version.outputs.needs_release == 'true' && github.event_name == 'push' && github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
